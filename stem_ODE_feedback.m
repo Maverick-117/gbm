@@ -3,10 +3,10 @@ dU = zeros(3, 1);
 % U(1) := stem cell; U(2) := diff. cell; U(3) := survivin
 % V = U(2)/(U(1)+U(2));
 
-% Yu eq (feedback on r1, r2 and p)
+% Vo eq (feedback on r1, r2 and p)
 dU(1) = (2*p/(1+l*U(2)^n)-1)*r1/(1+h*U(2)^z)*U(1); % stem cell
 dU(2) = 2*(1-p/(1+l*U(2)^n))*r1/(1+h*U(2)^z)*U(1)+r2/(1+h*U(2)^z)*U(2)-d/(1+h*U(2)^z)*U(2); %differentiated cell
-dU(3) = -sig*U(3);
+dU(3) = 0;
 
 % Yu eq (feedback on r1, r2 and p)
 % dU(1) = (2*p/(1+l*U(2)^n)-1)*r1/(1+h*U(2)^z)*U(1)*cutoff(U(1),0); % stem cell

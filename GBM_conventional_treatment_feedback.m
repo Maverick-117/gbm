@@ -2,17 +2,18 @@
 %clc;
 %clear;
 load('fit_result_data_GBM.mat')
+sig = 0.1;
 %% Defining Variables and Initialization
 % Radiotherapy model
 par = parameters;%[.052 .01 .071 .197 .203];%   
 DT =  3.9; % doubling time in days in order labeled by varible "cell_lines"
-Doses = [60]; % dose fraction sizes in Gy
-Frac = [1]; 
+Doses = [2]; % dose fraction sizes in Gy
+Frac = [30]; 
 treat_start = 100; % treatment start time relative to start of simulation
 acq_days_after_RT = 110; % simulation length after last fraction
 
 % ODE model
-color = {'k','r','b'};
+color = {'r','k','b'};
 p = .505; % self renewal probability 
 x =[]; y1 = []; y2 = [];
 h = 10^(5); z = 1; % control the strength of inhibitory signal
@@ -26,7 +27,7 @@ else
 end
 n = 1; 
 pwr = 3;
-C = [0 5.196*10^(-pwr)];
+C = [5.196*10^(-pwr)];
 % dedifferentiation rate
 r1 = 0.1777; % growth rate of CSC
 r2 = 0.1777; % growth rate of DCC
@@ -88,7 +89,10 @@ for g = 1:length(cell_lines)
         [Ta,Ua] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, treat_days(1)],[sc_start tc_start srv_start], options);
         % Without treatment 
         [Tb,Ub] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, acq_days_after_RT],[sc_start tc_start srv_start], options);
-         
+        UU = U(:,3) .* exp(-sig * (T)); 
+        UUa = Ua(:,3) .* exp(-sig * (Ta)); 
+        UUb = Ub(:,3) .* exp(-sig * (Tb)); % using an integrating factor to bypass stiffness
+        U(:,3) = UU; Ua(:,3) = UUa; Ub(:,3) = UUb;
         %% pre-therapy growth dynamics and plotting
         figure(1)
         hold on
@@ -137,14 +141,14 @@ for g = 1:length(cell_lines)
             plot(Tb(:,1),log10(Ub(:,2)*total_cell_num),'g','LineWidth', 2) 
             plot(Ta(:,1),log10(Ua(:,1)*total_cell_num),'color', color{k},'LineStyle','--','LineWidth', 2) % stem cell
             plot(Ta(:,1),log10(Ua(:,2)*total_cell_num),'color', color{k},'LineWidth', 2) 
-            plot(Ta(:,1),log10(Ua(:,3)*total_cell_num),'color', color{k},'LineStyle',':','LineWidth', 2)
+            %plot(Ta(:,1),log10(Ua(:,3)*total_cell_num),'color', color{k},'LineStyle',':','LineWidth', 2)
             ylabel({'Survival cell'; 'number (log10)'})
         else
             plot(Tb(:,1),Ub(:,1)*total_cell_num,'g','LineStyle','--','LineWidth', 2) % stem cell
             plot(Tb(:,1),Ub(:,2)*total_cell_num,'g','LineWidth', 2) 
             plot(Ta(:,1),Ua(:,1)*total_cell_num,'color', color{k},'LineStyle','--','LineWidth', 2) % stem cell
             plot(Ta(:,1),Ua(:,2)*total_cell_num,'color', color{k},'LineWidth', 2) 
-            plot(Ta(:,1),Ua(:,3)*total_cell_num,'color', color{k},'LineStyle',':','LineWidth', 2)
+            %plot(Ta(:,1),Ua(:,3)*total_cell_num,'color', color{k},'LineStyle',':','LineWidth', 2)
             ylabel({'Survival cell'; 'number'})
         end
         xlabel('Time (Days)')
@@ -155,10 +159,10 @@ for g = 1:length(cell_lines)
         figure(101)
         hold on
         if logQ
-            plot(Ta(:,1),log10(Ua(:,3)*1),'color', color{k},'LineStyle',':','LineWidth', 2)
+            plot(Ta(:,1),log10(UUa*1),'color', color{k},'LineStyle',':','LineWidth', 2)
             ylabel({'Survivin Fraction (log10)'})
         else
-            plot(Ta(:,1),Ua(:,3)*1,'color', color{k},'LineStyle',':','LineWidth', 2)
+            plot(Ta(:,1),UUa*1,'color', color{k},'LineStyle',':','LineWidth', 2)
             ylabel({'Survivin Fraction'})
         end
         xlabel('Time (Days)')
@@ -168,7 +172,7 @@ for g = 1:length(cell_lines)
         
         figure(102)
         hold on
-        plot(Ta(:,1),1 ./(1+cont_p_a*Ua(:,3)*1),'color', color{k},'LineStyle',':','LineWidth', 2)
+        plot(Ta(:,1),1 ./(1+cont_p_a*UUa*1),'color', color{k},'LineStyle',':','LineWidth', 2)
         xlabel('Time (Days)')
         ylabel('Feedback on \alpha')
         title('Feedback over time')
@@ -176,7 +180,7 @@ for g = 1:length(cell_lines)
         hold off
         figure(103)
         hold on
-        plot(Ta(:,1),1 ./(1+cont_p_b*Ua(:,3)*1),'color', color{k},'LineStyle',':','LineWidth', 2)
+        plot(Ta(:,1),1 ./(1+cont_p_b*UUa*1),'color', color{k},'LineStyle',':','LineWidth', 2)
         xlabel('Time (Days)')
         ylabel('Feedback on \beta_V')
         title('Feedback on \beta_V over time')
@@ -184,7 +188,7 @@ for g = 1:length(cell_lines)
         hold off
         figure(104)
         hold on
-        plot(Ta(:,1),1 ./(1+compt_mult*cont_p_b*Ua(:,3)*1),'color', color{k},'LineStyle',':','LineWidth', 2)
+        plot(Ta(:,1),1 ./(1+compt_mult*cont_p_b*UUa*1),'color', color{k},'LineStyle',':','LineWidth', 2)
         xlabel('Time (Days)')
         ylabel('Feedback on \beta_U')
         title('Feedback on \beta_U over time')
@@ -192,7 +196,7 @@ for g = 1:length(cell_lines)
         hold off
         figure(104)
         hold on
-        plot(Ta(:,1),1 ./(1+compt_mult*cont_p_b*Ua(:,3)*1),'color', color{k},'LineStyle',':','LineWidth', 2)
+        plot(Ta(:,1),1 ./(1+compt_mult*cont_p_b*UUa*1),'color', color{k},'LineStyle',':','LineWidth', 2)
         xlabel('Time (Days)')
         ylabel('Feedback on \beta_U')
         title('Feedback on \beta_U over time')
@@ -200,7 +204,7 @@ for g = 1:length(cell_lines)
         hold off
         figure(105)
         hold on
-        plot(Ta(:,1),1 ./(1+compt_mult*cont_p_b*Ua(:,3)*1),'color', color{k},'LineStyle',':','LineWidth', 2)
+        plot(Ta(:,1),1 ./(1+compt_mult*cont_p_b*UUa*1),'color', color{k},'LineStyle',':','LineWidth', 2)
         xlabel('Time (Days)')
         ylabel('Feedback on \beta_U')
         title('Feedback on \beta_U over time')
@@ -265,11 +269,11 @@ for g = 1:length(cell_lines)
         if logQ
             y1 = [log10(U(end,1)*total_cell_num)];
             y2 = [log10(U(end,2)*total_cell_num)];
-            ys = [log10(U(end,3)*1)];
+            ys = [log10(UU(end)*1)];
         else
             y1 = [U(end,1)*total_cell_num];
             y2 = [U(end,2)*total_cell_num];
-            ys = [U(end,3)*1];
+            ys = [UU(end)*1];
         end
         y3 = [U(end,1)];
         y4 = [U(end,2)];
@@ -282,19 +286,21 @@ for g = 1:length(cell_lines)
         for i = 1:length(sim_resume_days)
         %%%%%%% with stem cell %%%%%%%%%
             LQ_param = {a1, b1, a2, b2, c, D};
-            [u_new,v_new, s_new] = radiotherapy(U, LQ_param, surv_vec);
+            [u_new,v_new, s_new,SF_U, SF_V] = radiotherapy(U, LQ_param, surv_vec);
 
             [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[sim_resume_days(i), treat_days(i+1)],[u_new v_new s_new]);
-                
+            %fprintf('old UU: %f, new UU: %f', UU, U(end,3) .* exp(-sig * (T-treat_days(i)) )
+            UU = U(:,3) .* exp(-sig * (T-treat_days(i))); % using an integrating factor to bypass stiffness
+            U(:,3) = UU;
             x = [x T(1,1) T(end,1)];
             if logQ
                 y1 = [y1 log10(U(1,1)*total_cell_num) log10(U(end,1)*total_cell_num)];
                 y2 = [y2 log10(U(1,2)*total_cell_num) log10(U(end,2)*total_cell_num)];
-                ys = [ys log10(U(1,3)*1) log10(U(end,3)*1)];
+                ys = [ys log10(UU(1)*1) log10(UU(end)*1)];
             else
                 y1 = [y1 U(1,1)*total_cell_num U(end,1)*total_cell_num];
                 y2 = [y2 U(1,2)*total_cell_num U(end,2)*total_cell_num];
-                ys = [ys U(1,3)*1 U(end,3)*1];
+                ys = [ys UU(1)*1 UU(end)*1];
             end
             y3 = [y3 U(1,1) U(end,1)];
             y4 = [y4 U(1,2) U(end,2)]; 
@@ -309,11 +315,11 @@ for g = 1:length(cell_lines)
                 plot(Ta(:,1),log10(Ua(:,1)*total_cell_num),'color', color{k},'LineStyle','--','LineWidth', 2) % stem cell
                 plot(Ta(:,1),log10(Ua(:,2)*total_cell_num),'color', color{k},'LineWidth', 2) 
                 %plot(Ta(:,1),log10(Ua(:,3)*total_cell_num),'color', color{k},'LineStyle',':','LineWidth', 2)
-                plot(T(1:end-1),log10(U(1:end-1,3)*total_cell_num),'color', color{k},'LineStyle',':','LineWidth', 2)
+                plot(T(1:end-1),log10(UU(1:end-1)*total_cell_num),'color', color{k},'LineStyle',':','LineWidth', 2)
             else
                 plot(Ta(:,1),Ua(:,1)*total_cell_num,'color', color{k},'LineStyle','--','LineWidth', 2) % stem cell
                 plot(Ta(:,1),Ua(:,2)*total_cell_num,'color', color{k},'LineWidth', 2) 
-                plot(T(1:end-1),U(1:end-1,3)*total_cell_num,'color', color{k},'LineStyle',':','LineWidth', 2)
+                plot(T(1:end-1),UU(1:end-1)*total_cell_num,'color', color{k},'LineStyle',':','LineWidth', 2)
                 %plot(Ta(:,1),Ua(:,3)*total_cell_num,'color', color{k},'LineStyle',':','LineWidth', 2)
             end
             plot(x(1:end-1),y1(1:end-1),'color', color{k},'LineStyle','--','LineWidth', 2)
@@ -437,33 +443,33 @@ for g = 1:length(cell_lines)
         
         if logQ
             plot(T(:,1),log10((U(:,1)+U(:,2))*total_cell_num),'color', color{k},'LineStyle','-.','LineWidth', 2) % stem cell
-            plot(T(:,1),log10(U(:,3)*total_cell_num),'color', color{k},'LineStyle',':','LineWidth', 2)
+            %plot(T(:,1),log10(U(:,3)*total_cell_num),'color', color{k},'LineStyle',':','LineWidth', 2)
          else
             plot(T(:,1),(U(:,1)+U(:,2))*total_cell_num,'color', color{k},'LineStyle','-.','LineWidth', 2) % stem cell
-            plot(T(:,1),U(:,3)*total_cell_num,'color', color{k},'LineStyle',':','LineWidth', 2)
+            %plot(T(:,1),U(:,3)*total_cell_num,'color', color{k},'LineStyle',':','LineWidth', 2)
         end
         hold off 
         figure(101)
         hold on
         
         if logQ
-            plot(T(:,1),log10(U(:,3)*1),'color', color{k},'LineStyle',':','LineWidth', 2)
+            plot(T(:,1),log10(UU*1),'color', color{k},'LineStyle',':','LineWidth', 2)
          else
-            plot(T(:,1),U(:,3)*1,'color', color{k},'LineStyle',':','LineWidth', 2)
+            plot(T(:,1),UU*1,'color', color{k},'LineStyle',':','LineWidth', 2)
         end
         hold off 
         
         figure(102)
         hold on
-        plot(T(:,1),1./(1+cont_p_a*U(:,3)*1),'color', color{k},'LineStyle',':','LineWidth', 2)
+        plot(T(:,1),1./(1+cont_p_a*UU*1),'color', color{k},'LineStyle',':','LineWidth', 2)
         hold off
         figure(103)
         hold on
-        plot(T(:,1),1./(1+cont_p_b*U(:,3)*1),'color', color{k},'LineStyle',':','LineWidth', 2)
+        plot(T(:,1),1./(1+cont_p_b*UU*1),'color', color{k},'LineStyle',':','LineWidth', 2)
         hold off
         figure(104)
         hold on
-        plot(T(:,1),1./(1+compt_mult*cont_p_b*U(:,3)*1),'color', color{k},'LineStyle',':','LineWidth', 2)
+        plot(T(:,1),1./(1+compt_mult*cont_p_b*UU*1),'color', color{k},'LineStyle',':','LineWidth', 2)
         hold off
         
         figure(10)
