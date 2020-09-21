@@ -8,7 +8,7 @@ s = U(end,3);
 [cont_p_a, cont_p_b, compt_mult, srvn_csc, srvn_dcc] = surv_vec{:};
 % compt_mult tunes fold-change of stem cell feedback ratio based on diff.
 % cell feedback ratio
-SF_U =  exp(-a1*fdbk(cont_p_a, s)*D-b1*fdbk(cont_p_b*compt_mult, s)*D^2);
+SF_U =  exp(-a1*fdbk(cont_p_a*compt_mult, s)*D-b1*fdbk(cont_p_b*compt_mult, s)*D^2);
 SF_V = exp(-a2*fdbk(cont_p_a, s)*D-b2*fdbk(cont_p_b, s)*D^2);
 u_new = u*SF_U + min(1,c*D)*v*exp(-a2*fdbk(cont_p_a, s)*D-b2*fdbk(cont_p_b, s)*D^2); % apply RT
 % u*exp(-a1*D-b1*D^2) + min(1,c*D)*v

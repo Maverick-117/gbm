@@ -26,7 +26,7 @@ p = .505; % self renewal probability
 h = 10^(5); z = 1; % control the strenth of inhibitory signal
 
 
-saveQ = false; logQ = true; weak_feedback_Q = false; srvQ = true;
+saveQ = false; logQ = true; weak_feedback_Q = true; srvQ = true;
 
 
 
@@ -59,7 +59,7 @@ total_start_cell_num = total_cell_num*total_start_frac;
 
 if srvQ
     srvn_csc = 3.6; srvn_dcc = 0.05;
-    srvn_zeta = [0, 0; 0.1, 0.01; 1, 0.1; 10, 1000; 1, 100];
+    srvn_zeta = [0, 0; 1, 0.01;1, 0.1; 1, 1; 1, 10; 1, 100; 1, 1000];%[0, 0; 0.1, 0.01; 1, 0.1; 10, 1000; 1, 100];
     %[0, 0; 1, 0.01;1, 0.1; 1, 1; 1, 10; 1, 100; 1, 1000];
     srvn_zeta(:,1) = srvn_zeta(:,1) * srvn_csc;
     srvn_zeta(:,2) = srvn_zeta(:,2) * srvn_dcc;
@@ -127,7 +127,7 @@ for ii=1:len_surv_cont
                     [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, treat_days(1)],[sc_start tc_start srv_start], options);
                     [Ta,Ua] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, treat_days(1)],[sc_start tc_start srv_start], options);
                     % Without treatment 
-                    [Tb,Ub] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, acq_days_after_RT],[sc_start tc_start srv_start], options);
+                    [Tb,Ub] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, acq_end],[sc_start tc_start srv_start], options);
                     U(:,3) = U(:,3) .* exp(-sig * (T)); 
                     Ua(:,3) = Ua(:,3) .* exp(-sig * (Ta)); 
                     Ub(:,3) = Ub(:,3) .* exp(-sig * (Tb)); % using an integrating factor to bypass stiffness
@@ -265,6 +265,8 @@ for ii=1:len_surv_cont
         end
     end
 end
+
+
 
 per_ratio(per_ratio == 0) = nan;
                     

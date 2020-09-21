@@ -26,7 +26,7 @@ p = .505; % self renewal probability
 h = 10^(5); z = 1; % control the strenth of inhibitory signal
 
 
-saveQ = false; logQ = true; weak_feedback_Q = false; srvQ = true;
+saveQ = false; logQ = true; weak_feedback_Q = true; srvQ = true;
 
 
 
@@ -124,7 +124,7 @@ for ii=1:len_surv_cont
                     [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, treat_days(1)],[sc_start tc_start srv_start], options);
                     [Ta,Ua] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, treat_days(1)],[sc_start tc_start srv_start], options);
                     % Without treatment 
-                    [Tb,Ub] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, acq_days_after_RT],[sc_start tc_start srv_start], options);
+                    [Tb,Ub] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, acq_end],[sc_start tc_start srv_start], options);
                     U(:,3) = U(:,3) .* exp(-sig * (T)); 
                     Ua(:,3) = Ua(:,3) .* exp(-sig * (Ta)); 
                     Ub(:,3) = Ub(:,3) .* exp(-sig * (Tb)); % using an integrating factor to bypass stiffness
@@ -233,7 +233,7 @@ end
 line_types{1} = '-';
 suffix = '_alt'; % i.e. '_testN'
 per_ratio = zeros(len_D,len_C,len_samples,len_surv_cont);
-fig_start = 500;
+fig_start = 100;
 for gg=1:len_zeta
     title_prefix = [fdbk_type,' Fdbk; Relative CSC at time ~ '];
     for t=1:len_samples
