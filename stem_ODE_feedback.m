@@ -4,8 +4,8 @@ dU = zeros(3, 1);
 % V = U(2)/(U(1)+U(2));
 
 % Vo eq (feedback on r1, r2 and p)
-dU(1) = (2*p/(1+l*U(2)^n)-1)*r1/(1+h*U(2)^z)*U(1) + mu_bar * chi * U(3) / ( 1 + chi * U(3) ); % stem cell
-dU(2) = 2*(1-p/(1+l*U(2)^n))*r1/(1+h*U(2)^z)*U(1)+r2/(1+h*U(2)^z)*U(2)-d/(1+h*U(2)^z)*U(2) - mu_bar * chi * U(3) / ( 1 + chi * U(3) ); %differentiated cell
+dU(1) = (2*p/(1+l*U(2)^n)-1)*r1/(1+h*U(2)^z)*U(1) + mu_bar * chi * U(3) / ( 1 + chi * U(3) ) * U(2); % stem cell
+dU(2) = 2*(1-p/(1+l*U(2)^n))*r1/(1+h*U(2)^z)*U(1)+r2/(1+h*U(2)^z)*U(2)-d/(1+h*U(2)^z  - mu_bar * chi * U(3) / ( 1 + chi * U(3) ))*U(2); %differentiated cell
 dU(3) = 0;
 
 % Yu eq (feedback on r1, r2 and p)
@@ -47,3 +47,4 @@ else
     G = 0;
 end
 
+ 

@@ -2,13 +2,13 @@
 clc;
 clear;
 load('fit_result_data_GBM.mat')
-sig = 0.1;
+sig = 0.1; 
 %% Defining Variables and Initialization
 % Radiotherapy model
 par = parameters;%[.052 .01 .071 .197 .203];%   
 DT =  3.9; % doubling time in days in order labeled by varible "cell_lines"
-Doses = [6]; % dose fraction sizes in Gy
-Frac = [10]; 
+Doses = [2]; % dose fraction sizes in Gy
+Frac = [30]; 
 treat_start = 100; % treatment start time relative to start of simulation
 acq_days_after_RT = 110; % simulation length after last fraction
 
@@ -27,7 +27,11 @@ else
 end
 n = 1; 
 pwr = 3;
-C = [5.196*10^(-pwr)];
+C = [5.196*10^(-pwr)]; 
+chi = 10^4; mu_bar = C(1); % chi too high causes negative values
+% negative values seems like a general issue here...
+
+
 % dedifferentiation rate
 r1 = 0.1777; % growth rate of CSC
 r2 = 0.1777; % growth rate of DCC
@@ -40,7 +44,7 @@ rho = 10^9; % density of cells in the region of interest (cells/cm^3)
 total_cell_num = 4/3*pi()*ROI_radius^3*rho;
 total_start_cell_num = total_cell_num*total_start_frac;
 suffix = '_alt';
-saveQ = false; logQ = false; srvQ = true;
+saveQ = false; logQ = false; srvQ = true; logFracQ = false;
 srv_start = 0; %initializing survivin amount
 cont_p_a = 10^4; cont_p_b = 10*cont_p_a; compt_mult = 100;
 if srvQ
@@ -76,7 +80,7 @@ for g = 1:length(cell_lines)
         % Defining treatment days and ODE simulation start time after each fraction
         weeks = floor(frac_num/5);
         total_days = frac_num + 2*weeks;
-        acq_end = treat_start + total_days + acq_days_after_RT - 1;
+        acq_end = treat_start + 150;%treat_start + total_days + acq_days_after_RT - 1;
         A = repmat([1 1 1 1 1 0 0], 1, weeks+1);
         A_new = A(1:total_days);
         treat_days = find(A_new==1)+treat_start-1;
@@ -85,10 +89,10 @@ for g = 1:length(cell_lines)
         % ODE simulation before first fraction of RT
         options = odeset('Refine',1, 'maxstep', 1);
         % With treatment 
-        [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, treat_days(1)],[sc_start tc_start srv_start], options);
-        [Ta,Ua] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, treat_days(1)],[sc_start tc_start srv_start], options);
+        [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, treat_days(1)],[sc_start tc_start srv_start], options);
+        [Ta,Ua] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, treat_days(1)],[sc_start tc_start srv_start], options);
         % Without treatment 
-        [Tb,Ub] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, acq_end],[sc_start tc_start srv_start], options);
+        [Tb,Ub] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, acq_end],[sc_start tc_start srv_start], options);
         UU = U(:,3) .* exp(-sig * (T)); 
         UUa = Ua(:,3) .* exp(-sig * (Ta)); 
         UUb = Ub(:,3) .* exp(-sig * (Tb)); % using an integrating factor to bypass stiffness
@@ -112,7 +116,7 @@ for g = 1:length(cell_lines)
         end
         
         xlabel('\fontsize{12} Time (Days)')
-        axis([0 acq_end -inf inf])
+        axis([0 acq_end 7e3 2e7])
         hold off 
         
         figure(100)
@@ -133,7 +137,7 @@ for g = 1:length(cell_lines)
         end
         
         xlabel('\fontsize{12} Time (Days)')
-        axis([0 acq_end -inf inf])
+        axis([0 acq_end 7e3 2e7])
         hold off 
         
         figure(10)
@@ -154,7 +158,7 @@ for g = 1:length(cell_lines)
             ylabel({'Survival cell'; 'number'})
         end
         xlabel('Time (Days)')
-        axis([0 acq_end -inf inf])
+        axis([0 acq_end 7e3 2e7])
         hold off
         
         % plotting survivin
@@ -169,7 +173,7 @@ for g = 1:length(cell_lines)
         end
         xlabel('Time (Days)')
         title('Survivin over time')
-        axis([0 acq_end -inf inf])
+        axis([0 acq_end 0 2.5e-4])
         hold off
         
         figure(102)
@@ -202,6 +206,14 @@ for g = 1:length(cell_lines)
         xlabel('Time (Days)')
         ylabel('Feedback on \alpha_U')
         title('Feedback on \alpha_U over time')
+        axis([0 acq_end 0 1])
+        hold off
+        figure(106)
+        hold on
+        plot(Ta(:,1),chi*UUa ./(1+chi*UUa*1),'color', color{k},'LineStyle',':','LineWidth', 2)
+        xlabel('Time (Days)')
+        ylabel('Positive feedback on \mu')
+        title('Relative rate of de-differentiation over time')
         axis([0 acq_end 0 1])
         hold off
         
@@ -282,7 +294,7 @@ for g = 1:length(cell_lines)
             LQ_param = {a1, b1, a2, b2, c, D};
             [u_new,v_new, s_new,SF_U, SF_V] = radiotherapy(U, LQ_param, surv_vec);
 
-            [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[sim_resume_days(i), treat_days(i+1)],[u_new v_new s_new]);
+            [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[sim_resume_days(i), treat_days(i+1)],[u_new v_new s_new]);
             %fprintf('old UU: %f, new UU: %f', UU, U(end,3) .* exp(-sig * (T-treat_days(i)) )
             UU = U(:,3) .* exp(-sig * (T-treat_days(i))); % using an integrating factor to bypass stiffness
             U(:,3) = UU;
@@ -369,6 +381,16 @@ for g = 1:length(cell_lines)
                 plot(x(1:end-1),1 ./(1+compt_mult*cont_p_a*ys(1:end-1)*1),'color', color{k},'LineStyle',':','LineWidth', 2)
             end
             hold off
+            
+            figure(106)
+            hold on
+            if logQ
+                plot(x(1:end-1),chi*(10.^ys(1:end-1))*1 ./(1+chi*(10.^ys(1:end-1))*1),'color', color{k},'LineStyle',':','LineWidth', 2)
+            else
+                plot(x(1:end-1),chi*ys(1:end-1)*1 ./(1+chi*ys(1:end-1)*1),'color', color{k},'LineStyle',':','LineWidth', 2)
+            end
+            hold off
+            
             figure(10)
             hold on
             if logQ
@@ -447,6 +469,9 @@ for g = 1:length(cell_lines)
          else
             plot(T(:,1),(U(:,1)+U(:,2))*total_cell_num,'color', color{k},'LineStyle','-.','LineWidth', 2) % stem cell
             %plot(T(:,1),U(:,3)*total_cell_num,'color', color{k},'LineStyle',':','LineWidth', 2)
+            if logFracQ
+                set(gca, 'YScale', 'log')
+            end
         end
         hold off 
         figure(101)
@@ -474,6 +499,10 @@ for g = 1:length(cell_lines)
         figure(105)
         hold on
         plot(T(:,1),1./(1+compt_mult*cont_p_a*UU*1),'color', color{k},'LineStyle',':','LineWidth', 2)
+        hold off
+        figure(106)
+        hold on
+        plot(T(:,1),chi*UU*1./(1+chi*UU*1),'color', color{k},'LineStyle',':','LineWidth', 2)
         hold off
         
         figure(10)
@@ -521,23 +550,64 @@ for g = 1:length(cell_lines)
         
     %clearvars -except sc_start tc_start p color tUV_all tUVb_all treat_all sim_resume_all TCP_all TCPb_all par DT Doses Frac treat_start ROI_radius total_cell_num total_start_frac total_start_cell_num rho acq_days_after_RT cell_lines data_new par_ab parameters F a b a1 a2 b1 b2 g k TCPb_frac TCP_frac BED BEDb TCP_thre folder
 end
+
+test_x = [x(1:end-2) T']; test_y = [ys(1:end-2) U(:,3)'];
+sum(test_x .* test_y)
+trapz(test_x,test_y)
+
+fig99 = figure(99);
+plot(test_x(2:end),test_y(2:end),color{k},'LineStyle',':','LineWidth', 2)
+hold on
+low_lim_log = floor(log10(min(test_y(2:end))));
+high_lim_log = ceil(log10(max(test_y(2:end))));
+yticks = unique(10.^floor(log10(logspace(low_lim_log,high_lim_log,8))));
+axis([treat_start acq_end 10^low_lim_log 10^high_lim_log])
+ylabel('Survivin Fraction')
+xlabel('Days')
+hold off
+figS = figure(101);
+[h_m h_i] = inset(figS, fig99);
+set(h_i,'yscale','log','ytick',yticks)
+
+fig999 = figure(999);
+plot(test_x(2:end),chi * test_y(2:end)./(1+chi*test_y(2:end)),color{k},'LineStyle',':','LineWidth', 2)
+hold on
+low_lim_log = floor(log10(min(chi * test_y(2:end)./(1+chi*test_y(2:end)))));
+high_lim_log = ceil(log10(max(chi * test_y(2:end)./(1+chi*test_y(2:end)))));
+axis([treat_start acq_end 10^low_lim_log 10^high_lim_log])
+yticks = unique(10.^floor(log10(logspace(low_lim_log,high_lim_log,8))));
+ylabel('Positive feedback on \mu')
+xlabel('Days')
+hold off
+figF = figure(106);
+[h_m h_i] = inset(figF, fig999);
+set(h_i,'yscale','log','ytick',yticks)
 %% final plot embroidery and saving
 fig1 = figure(1);
 fig2 = figure(10);
 [h_m h_i]=inset(fig1,fig2);
-set(h_i,'xtick',100:20:160,'xlim',[99,160])
+if logFracQ
+    set(h_m,'yscale','log');
+end
+set(h_i,'xtick',100:floor(acq_days_after_RT/4):acq_end,'xlim',[99,acq_end],'yscale','log')
 
 fig3 = figure(2);
-fig4 = figure(11);
-[h_m h_i]=inset(fig3,fig4);
-set(h_i,'xtick',100:20:160,'xlim',[99,160],'yscale','log')
-set(h_m,'yscale','log')
+%fig4 = figure(11);
+%[h_m h_i]=inset(fig3,fig4);
+%set(h_i,'xtick',100:20:160,'xlim',[99,160],'yscale','log')
+set(gca,'yscale','log')
 
-cab 3 4 5 6 100 101 102 103 104 105
+cab 3 4 5 2 6 7 100 102 103 104 105 106
+figure(); plot(T(1:end-1),diff(U(:,1))*total_cell_num./diff(T),'ro:','LineWidth',2);
+xlim([treat_start acq_end]);
+ylim([0 inf])
+ylabel('Derivative'); xlabel('Days'); 
+title({['rate of change after treatment for'], ['mu\_bar = ' num2str(mu_bar) '; chi = ' num2str(chi)]});
+    
 fig1 = figure(3);
 fig2 = figure(4);
 fig3 = figure(5);
-fig4 = figure(6);
+%fig4 = figure(6);
 
 if weak_feedback_Q
     fdbk_type = 'Weak';
@@ -561,7 +631,3 @@ if saveQ
     savefig(fig4,[prefix 'csc\' filename_prefix '_csc' suffix '.fig'])
     saveas(fig4,[prefix 'csc\' filename_prefix '_csc' suffix '.png'])
 end
-
-test_x = [x(1:end-2) T']; test_y = [ys(1:end-2) U(:,3)'];
-sum(test_x .* test_y)
-trapz(test_x,test_y)
