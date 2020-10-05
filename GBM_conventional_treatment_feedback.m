@@ -601,7 +601,7 @@ cab 3 4 5 2 6 7 100 102 103 104 105 106
 figure(); plot(T(1:end-1),diff(U(:,1))*total_cell_num./diff(T),'ro:','LineWidth',2);
 xlim([treat_start acq_end]);
 ylim([0 inf])
-ylabel('Derivative'); xlabel('Days'); 
+ylabel({['Stem Cell Derivative'] ['(Forward Finite Difference)']}); xlabel('Days'); 
 title({['rate of change after treatment for'], ['mu\_bar = ' num2str(mu_bar) '; chi = ' num2str(chi)]});
     
 fig1 = figure(3);
