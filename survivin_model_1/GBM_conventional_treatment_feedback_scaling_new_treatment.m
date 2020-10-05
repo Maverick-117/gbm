@@ -1,7 +1,12 @@
+% attempt at survivin model 1 to use rescaling (painfully) recorded as a
+% conversion factor between Yu and Kim's model into dynamics. needs
+% adjustment to the control parameters to reflect this, else the dynamics
+% dramatically change per the mucking about by a changed initial condition
 %% Basic 
 %clc;
 %clear;
 load('fit_result_data_GBM.mat')
+chi = 0; mu_bar = 0;
 %% Defining Variables
 % Radiotherapy model
 par = parameters;%[.052 .01 .071 .197 .203];%   
@@ -83,10 +88,10 @@ for g = 1:length(cell_lines)
         % ODE simulation before first fraction of RT
         options = odeset('Refine',1, 'maxstep', 1);
         % With treatment 
-        [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, treat_days(1)],[sc_start tc_start srv_start]*total_cell_num/rho, options);
-        [Ta,Ua] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, treat_days(1)],[sc_start tc_start srv_start]*total_cell_num/rho, options);
+        [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, treat_days(1)],[sc_start tc_start srv_start]*total_cell_num/rho, options);
+        [Ta,Ua] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, treat_days(1)],[sc_start tc_start srv_start]*total_cell_num/rho, options);
         % Without treatment 
-        [Tb,Ub] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, acq_days_after_RT],[sc_start tc_start srv_start]*total_cell_num/rho, options);
+        [Tb,Ub] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, acq_days_after_RT],[sc_start tc_start srv_start]*total_cell_num/rho, options);
          
         
         figure(1)
@@ -225,7 +230,7 @@ for g = 1:length(cell_lines)
             LQ_param = {a1, b1, a2, b2, c, D};
             [u_new,v_new, s_new] = radiotherapy(U, LQ_param, surv_vec);
 
-            [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[sim_resume_days(i), treat_days(i+1)],[u_new v_new s_new]*total_cell_num/rho);
+            [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[sim_resume_days(i), treat_days(i+1)],[u_new v_new s_new]*total_cell_num/rho);
                 
             x = [x T(1,1) T(end,1)];
             if logQ
