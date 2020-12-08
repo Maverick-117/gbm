@@ -1,8 +1,9 @@
 %% Basic 
 clc;
 clear;
+close all
 load('fit_result_data_GBM.mat')
-sig = 0.1; 
+sig = 10^16 * sig; 
 %% Defining Variables and Initialization
 % Radiotherapy model
 par = parameters;%[.052 .01 .071 .197 .203];%   
@@ -43,17 +44,24 @@ ROI_radius = 1; % Radius of the simulation region of intrest
 rho = 10^9; % density of cells in the region of interest (cells/cm^3)
 total_cell_num = 4/3*pi()*ROI_radius^3*rho;
 total_start_cell_num = total_cell_num*total_start_frac;
-suffix = '';
+suffix = '_zero_case';
 saveQ = false; 
 
 logQ = false; srvQ = true; logFracQ = false;
 srv_start = 0; %initializing survivin amount
 cont_p_a = 10^4; cont_p_b = 10*cont_p_a; compt_mult = 100;
 if srvQ
-    srvn_csc = 3.6; srvn_dcc = 0.05;
+    %srvn_csc = 3.6; srvn_dcc = 0.05;
+    % model is more sensitive to this than to cont_p
+    zeta_mult1 = 1;
+    zeta_mult2 = 1; %; 3.6, 0.5; 3.6, 5];
 else
-    srvn_csc = 0; srvn_dcc = 0;
+    %srvn_csc = 0; srvn_dcc = 0;
+    zeta_mult1 = 0;
+    zeta_mult2 = 0;
 end
+srvn_zeta = [3.6 * zeta_mult1, 0.05 * zeta_mult2];
+srvn_csc = srvn_zeta(1); srvn_dcc = srvn_zeta(2);
 surv_vec = {cont_p_a, cont_p_b, compt_mult, srvn_csc, srvn_dcc}; %assuming these control parameters are constant
 
 
@@ -121,7 +129,6 @@ for g = 1:length(cell_lines)
         %%%%%%% with stem cell %%%%%%%%%
             LQ_param = {a1, b1, a2, b2, c, D};
             [u_new,v_new, s_new,SF_U, SF_V] = radiotherapy(U, LQ_param, surv_vec);
-
             [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[sim_resume_days(i), treat_days(i+1)],[u_new v_new s_new]);
             %fprintf('old UU: %f, new UU: %f', UU, U(end,3) .* exp(-sig * (T-treat_days(i)) )
             UU = U(:,3) .* exp(-sig * (T-treat_days(i))); % using an integrating factor to bypass stiffness
@@ -278,7 +285,7 @@ end
 xlabel('\fontsize{12} Time (Days)')
 ylabel('\fontsize{12} p value')
 plot(Tb(:,1),p./(1+l.*(Ub(:,2)).^n),'g','LineWidth', 4,'DisplayName','no treatment')
-plot(t_vec,p./(1+l.*(u_dc).^n),'color', color{k},'LineWidth', 2,'DisplayName','treatment') 
+plot(t_vec,p./(1+l.*(u_dc/total_cell_num).^n),'color', color{k},'LineWidth', 2,'DisplayName','treatment') 
 legend()
 hold off
 
@@ -293,7 +300,7 @@ end
 xlabel('\fontsize{12} Time (Days)')
 ylabel('\fontsize{12} m_u = m_v value')
 plot(Tb(:,1),r1./(1+h.*(Ub(:,2)).^z),'g','LineWidth', 4,'DisplayName','no treatment')
-plot(t_vec,r1./(1+h.*(u_dc).^z),'color', color{k},'LineWidth', 2,'DisplayName','treatment') 
+plot(t_vec,r1./(1+h.*(u_dc/total_cell_num).^z),'color', color{k},'LineWidth', 2,'DisplayName','treatment') 
 fg_div.CurrentAxes.YScale = 'log';
 legend()
 hold off
@@ -303,15 +310,15 @@ test_x = t_vec(length(Ta)+1:end); test_y = u_srv(length(Ta)+1:end);
 sum(test_x .* test_y)
 trapz(test_x,test_y)
 
-low_lim_log_s = floor(log10(min(test_y)));
-high_lim_log_s = ceil(log10(max(test_y)));
+low_lim_log_s = floor(log10(min(test_y(test_y ~= 0))));
+high_lim_log_s = ceil(log10(max(test_y(test_y ~= 0))));
 yticks = unique(10.^floor(log10(logspace(low_lim_log_s,high_lim_log_s,8))));
 fg_srv_inset = fg_srv;
 [fg_srv fg_srv_inset] = inset(fg_srv, fg_srv_inset);
 set(fg_srv_inset,'yscale','log','ytick',yticks,'ylim',[10^low_lim_log_s 10^high_lim_log_s],'xlim',[treat_start acq_end])
 title(fg_srv_inset,'')
-low_lim_log_mu = floor(log10(min(chi * test_y./(1+chi*test_y))));
-high_lim_log_mu = ceil(log10(max(chi * test_y./(1+chi*test_y))));
+low_lim_log_mu = floor(log10(min(chi * test_y(test_y ~= 0)./(1+chi*test_y(test_y ~= 0)))));
+high_lim_log_mu = ceil(log10(max(chi * test_y(test_y ~= 0)./(1+chi*test_y(test_y ~= 0)))));
 yticks = unique(10.^floor(log10(logspace(low_lim_log_mu,high_lim_log_mu,8))));
 fg_mu_inset = fg_mu;
 [fg_mu fg_mu_inset] = inset(fg_mu, fg_mu_inset);
@@ -343,20 +350,20 @@ else
 end
 % figure(); plot(T, 1 ./ (1+cont_p_a*U(:,3)))
 % figure(); plot(T, 1 ./ (1+compt_mult*cont_p_b*U(:,3)))
-prefix = ['C:\Users\jhvo9\Documents\vojh MCSB Repo\Projects\GBM Modeling\Survivin Models\Model 2 - Dedifferentiation Term\figs\'];
-paramFile = [prefix 'params.txt'];
-if ~isfile(paramFile)
-    fileID = fopen(paramFile,'wt');
-    fprintf(fileID,['Feedback type: ' num2str(fdbk_type) '\n'...
-        'gamma_alpha_V: ' num2str(cont_p_a) '\n'...
-        'gamma_beta_V: ' num2str(cont_p_b) '\n'...
-        'chi: ' num2str(chi) '\n\n'...
-        'Not fixed:\n* reprogramming rate order of magnitude\n* Radiotherapy Schedule\n* Survivin Decay Rate\n* Compartment Multiplier\n'...
-        'File format: pwr_dose_frac_sig_compt_mult.'])
-    fclose(fileID)
-end
+prefix = ['C:\Users\jhvo9\Google Drive (vojh1@uci.edu)\a PhD Projects\GBM Modeling\Survivin Models\Model 2 - Dedifferentiation Term\figs_diagnose_sigma\'];
+% paramFile = [prefix 'params.txt'];
+% if ~isfile(paramFile)
+%     fileID = fopen(paramFile,'wt');
+%     fprintf(fileID,['Feedback type: ' num2str(fdbk_type) '\n'...
+%         'gamma_alpha_V: ' num2str(cont_p_a) '\n'...
+%         'gamma_beta_V: ' num2str(cont_p_b) '\n'...
+%         'chi: ' num2str(chi) '\n\n'...
+%         'Not fixed:\n* reprogramming rate order of magnitude\n* Radiotherapy Schedule\n* Survivin Decay Rate\n* Compartment Multiplier\n'...
+%         'File format: pwr_dose_frac_sig_compt_mult.'])
+%     fclose(fileID)
+% end
 filename_prefix = [num2str(pwr),'_',num2str(Doses(1)),'_',num2str(Frac(1)),...
-    '_',num2str(sig),'_',num2str(compt_mult)];
+    '_',num2str(sig),'_',num2str(compt_mult),'_',num2str(srvn_csc),'_',num2str(srvn_dcc)];
 if saveQ
     savefig(fg_total,[prefix 'total\' filename_prefix '_total' suffix '.fig'])
     saveas(fg_total,[prefix 'total\' filename_prefix '_total' suffix '.png'])

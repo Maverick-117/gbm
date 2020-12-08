@@ -13,7 +13,8 @@ Frac = [30 4];
 len_D = length(Doses);
 line_lengths = [0.8 2.3];
 treat_start = 100; % treatment start time relative to start of simulation
-acq_days_after_RT = 150; % simulation length after last fraction
+days_later = 800;
+acq_days_after_RT = treat_start + days_later; % simulation length after last fraction
 
 % ODE model
 
@@ -22,28 +23,36 @@ p = .505; % self renewal probability
 h = 10^(5); z = 1; % control the strenth of inhibitory signal
 
 
-n = 1; low = -5; high = -2; c_l = high-low+1;
-C = [0 5.196*10.^(linspace(low,high,c_l))]; 
-color = cell(1,length(C));
+n = 1; low = -1; high = 1; c_l = high-low+1;
+
+C = 5.196e-3;
+%sig_list = [10^16 fliplr(logspace(low,high,c_l))] * sig;
+% color = cell(1,length(sig_list));
+% saveQ = false; logQ = true; srvQ = true;
+% for jj=1:c_l
+%     color{jj+1} = [jj/c_l (c_l-jj)/c_l 1];
+% end
+% color{1} = [0 0 0];
+sig_list = [logspace(low,high,c_l)] * sig;
+color = cell(1,length(sig_list));
 saveQ = false; logQ = true; srvQ = true;
 for jj=1:c_l
-    color{jj+1} = [jj/c_l (c_l-jj)/c_l 1];
+    color{jj} = [jj/c_l (c_l-jj)/c_l 1];
 end
-color{1} = [0 0 0];
 % dedifferentiation rate
 r1 = log(2)/DT; % growth rate of CSC
 r2 = log(2)/DT; % growth ra te of DCC
 d  = log(2)/DT; % death rate of DCC
 
 % Initial Condition
-total_start_frac = 0.0005/64;
+total_start_frac = 0.2/64;
 ROI_radius = 1; % Radius of the simulation region of intrest
 rho = 10^9; % density of cells in the region of interest (cells/cm^3)
 total_cell_num = 4/3*pi()*ROI_radius^3*rho;
 total_start_cell_num = total_cell_num*total_start_frac;
-ll = [false true];
-suffix = '_alt';
-cont_p_a = 1; cont_p_b = 0.1; compt_mult = 10;
+ll = [true];
+suffix = '';
+cont_p_a = 10^4; cont_p_b = 10*cont_p_a; compt_mult = 100;
 if srvQ
     srvn_csc = 3.6; srvn_dcc = 0.05;
 else
@@ -51,7 +60,7 @@ else
 end
 surv_vec = {cont_p_a, cont_p_b, compt_mult, srvn_csc, srvn_dcc}; %assuming these control parameters are constant
 
-mu_bar = 0; chi = 0;
+chi = 10^4; mu_bar = C(1);
 for ii=1:length(ll)
     weak_feedback_Q = ll(ii);
     if weak_feedback_Q
@@ -74,18 +83,20 @@ for ii=1:length(ll)
             b = par_ab(g,2);
             fprintf(['Cell Line: ' cell_lines{g} '\r'])
             fprintf(['a = ' num2str(a) ' b = ' num2str(b) '\r']);
-            for k = 1:length(C)
+            for k = 1:length(sig_list)
+                sig = sig_list(k);
+                fprintf("%f\n",sig);
                 srv_start = 0; %initializing survivin amount
                 % Defining Variables
                 D = Doses(jj);
                 frac_num = Frac(jj);
-                c = C(k);
+                c = C;
                 sc_start = total_start_frac*F;
                 tc_start = total_start_frac-sc_start;
                 % Defining treatment days and ODE simulation start time after each fraction
                 weeks = floor(frac_num/5);
                 total_days = frac_num + 2*weeks;
-                acq_end = treat_start + total_days + acq_days_after_RT - 1;
+                acq_end = treat_start + days_later;%total_days + acq_days_after_RT - 1;
                 A = repmat([1 1 1 1 1 0 0], 1, weeks+1);
                 A_new = A(1:total_days);
                 treat_days = find(A_new==1)+treat_start-1;
@@ -98,13 +109,16 @@ for ii=1:length(ll)
                 [Ta,Ua] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, treat_days(1)],[sc_start tc_start srv_start], options);
                 % Without treatment 
                 [Tb,Ub] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, acq_days_after_RT],[sc_start tc_start srv_start], options);
+                U(:,3) = U(:,3) .* exp(-sig * (T)); 
+                Ua(:,3) = Ua(:,3) .* exp(-sig * (Ta)); 
+                Ub(:,3) = Ub(:,3) .* exp(-sig * (Tb));
                 figure(ii)
                 hold on
 
                 if logQ
                     plot(Tb(:,1),log10(Ub(:,1)*total_cell_num),'g','LineStyle','--','LineWidth', line_lengths(jj)) % stem cell
                     plot(Tb(:,1),log10(Ub(:,2)*total_cell_num),'g','LineWidth', line_lengths(jj))
-                    ylabel('\fontsize{12} Survival cell number (log)')
+                    ylabel('\fontsize{12} Survival cell number (log10)')
                 else
                     plot(Tb(:,1),Ub(:,1)*total_cell_num,'g','LineStyle','--','LineWidth', line_lengths(jj)) % stem cell
                     plot(Tb(:,1),Ub(:,2)*total_cell_num,'g','LineWidth', line_lengths(jj)) 
@@ -141,6 +155,7 @@ for ii=1:length(ll)
                     [u_new,v_new, s_new] = radiotherapy(U,LQ_param, surv_vec);
 
                     [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[sim_resume_days(i), treat_days(i+1)],[u_new v_new s_new]);
+                    U(:,3) = U(:,3) .* exp(-sig * (T-treat_days(i)));
                     x = [x T(1,1) T(end,1)];
                     if logQ
                         y1 = [y1 log10(U(1,1)*total_cell_num) log10(U(end,1)*total_cell_num)];
@@ -171,7 +186,7 @@ for ii=1:length(ll)
                     end
                     plot(x(1:end-1),y1(1:end-1),'color', color{k},'LineStyle','--','LineWidth', line_lengths(jj))
                     lastwarn('', '');
-                    plot(x(1:end-1),y2(1:end-1),'color', color{k},'LineWidth', line_lengths(jj))
+                    %plot(x(1:end-1),y2(1:end-1),'color', color{k},'LineWidth', line_lengths(jj))
                     [warnMsg, warnId] = lastwarn();
                     if strcmp(warnId,'MATLAB:plot:IgnoreImaginaryXYPart')
                         fprintf("bananas.")
@@ -239,9 +254,9 @@ for ii=1:length(ll)
     fig1 = figure(ii);
     ax1 = fig1.CurrentAxes;
     if logQ
-        set(ax1,'ylim',[-3 6])
+        set(ax1,'ylim',[4 7.5])
     else
-        set(ax1,'ylim',[10^(-3) 10^(6)])
+        set(ax1,'ylim',[10^(0) 10^(10)])
     end
     if weak_feedback_Q
         fdbk_type = 'Weak';

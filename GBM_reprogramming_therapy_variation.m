@@ -27,6 +27,7 @@ h = 10^(5); z = 1; % control the strenth of inhibitory signal
 
 
 saveQ = false; logQ = true; weak_feedback_Q = true; srvQ = true;
+mu_bar = 0; chi = 0;
 
 
 
@@ -48,9 +49,9 @@ end
 color{1} = [0 0 0];
 
 % dedifferentiation rate
-r1 = log10(2)/DT; % growth rate of CSC
-r2 = log10(2)/DT; % growth rate of DCC
-d  = log10(2)/DT; % death rate of DCC
+r1 = log(2)/DT; % growth rate of CSC
+r2 = log(2)/DT; % growth rate of DCC
+d  = log(2)/DT; % death rate of DCC
 
 % Initial Condition
 total_start_frac = 0.0005/64;
@@ -109,10 +110,10 @@ for ii=1:len_surv_cont
                 % ODE simulation before first fraction of RT
                 options = odeset('Refine',1, 'maxstep', 1);
                 % With treatment 
-                [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, treat_days(1)],[sc_start tc_start srv_start], options);
-                [Ta,Ua] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, treat_days(1)],[sc_start tc_start srv_start], options);
+                [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, treat_days(1)],[sc_start tc_start srv_start], options);
+                [Ta,Ua] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, treat_days(1)],[sc_start tc_start srv_start], options);
                 % Without treatment 
-                [Tb,Ub] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, acq_days_after_RT],[sc_start tc_start srv_start], options);
+                [Tb,Ub] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, acq_days_after_RT],[sc_start tc_start srv_start], options);
 
 
 
@@ -139,7 +140,7 @@ for ii=1:len_surv_cont
                     LQ_param = {a1, b1, a2, b2, c, D};
                     [u_new,v_new, s_new] = radiotherapy(U,LQ_param, surv_vec);
 
-                    [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[sim_resume_days(i), treat_days(i+1)],[u_new v_new s_new]);
+                    [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[sim_resume_days(i), treat_days(i+1)],[u_new v_new s_new]);
                     x = [x T(1,1) T(end,1)];
                     if logQ
                         y1 = [y1 log10(U(1,1)*total_cell_num) log10(U(end,1)*total_cell_num)];

@@ -3,6 +3,7 @@ clc;
 clear;
 
 load('fit_result_data_GBM.mat')
+
 warning_counter = 0; culprit1 = []; culprit2 = []; d_type = []; c_type = []; xc = [];
 %% Defining Variables
 % Radiotherapy model
@@ -26,7 +27,7 @@ p = .505; % self renewal probability
 h = 10^(5); z = 1; % control the strenth of inhibitory signal
 
 
-saveQ = false; logQ = true; weak_feedback_Q = true; srvQ = true;
+saveQ = true; weak_feedback_Q = true; srvQ = true;
 
 
 
@@ -44,11 +45,11 @@ len_C = length(C);
 times = zeros(len_D,len_samples);
 
 
-
+chi = 10^4; mu_bar = C(1);
 % dedifferentiation rate
-r1 = log10(2)/DT; % growth rate of CSC
-r2 = log10(2)/DT; % growth rate of DCC
-d  = log10(2)/DT; % death rate of DCC
+r1 = log(2)/DT; % growth rate of CSC
+r2 = log(2)/DT; % growth rate of DCC
+d  = log(2)/DT; % death rate of DCC
 
 % Initial Condition
 total_start_frac = 0.2/64;
@@ -73,7 +74,7 @@ cont_p = [0 0; 1 0.1; 1 1; 1 10; 1 100] * cont_p_a;
 %cont_p = [1 10] * cont_p_a;
 %cont_p_a = 10^4; % \gamma_{\alpha_V}
 %cont_p_b = [0.1 10]; % \gamma_{\beta_V}
-compt_mult = 2; % \zeta_U; in reality, this should be higher than 1 since stem cells 
+compt_mult = 100; % \zeta_U; in reality, this should be higher than 1 since stem cells 
                 % tend to more difficult to kill, so a higher denominator is more attractive
 len_surv_cont = size(cont_p); 
 len_surv_cont = len_surv_cont(1);
@@ -121,65 +122,21 @@ for ii=1:len_surv_cont
                     % ODE simulation before first fraction of RT
                     options = odeset('Refine',1, 'maxstep', 1);
                     % With treatment 
-                    [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, treat_days(1)],[sc_start tc_start srv_start], options);
-                    [Ta,Ua] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, treat_days(1)],[sc_start tc_start srv_start], options);
+                    [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, treat_days(1)],[sc_start tc_start srv_start], options);
+                    [Ta,Ua] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, treat_days(1)],[sc_start tc_start srv_start], options);
                     % Without treatment 
-                    [Tb,Ub] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, acq_end],[sc_start tc_start srv_start], options);
+                    [Tb,Ub] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, acq_end],[sc_start tc_start srv_start], options);
                     U(:,3) = U(:,3) .* exp(-sig * (T)); 
                     Ua(:,3) = Ua(:,3) .* exp(-sig * (Ta)); 
                     Ub(:,3) = Ub(:,3) .* exp(-sig * (Tb)); % using an integrating factor to bypass stiffness
 
-
-                    x = [T(end,1)];
-                    if logQ
-                        y1 = [log10(U(end,1)*total_cell_num)];
-                        y2 = [log10(U(end,2)*total_cell_num)];
-                        ys = [log10(U(end,3)*1)];
-                    else
-                        y1 = [U(end,1)*total_cell_num];
-                        y2 = [U(end,2)*total_cell_num];
-                        ys = [U(end,3)*1];
-                    end
-                    y3 = [U(end,1)];
-                    y4 = [U(end,2)];
-                    S = sum(U,2);
-                    y5 = [U(end,1)./S(end)*100];
-                    y6 = [p./(1+l.*(U(end,2)).^n)];
-                    y7 = [r1./(1+h.*(U(end,2)).^z)];
-
-
                     for i = 1:length(sim_resume_days)
                     %%%%%%% with stem cell %%%%%%%%%
                         LQ_param = {a1, b1, a2, b2, c, D};
-                        [u_new,v_new, s_new] = radiotherapy(U,LQ_param, surv_vec);
+                        [u_new,v_new, s_new,SF_U, SF_V] = radiotherapy(U,LQ_param, surv_vec);
 
-                        [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[sim_resume_days(i), treat_days(i+1)],[u_new v_new s_new]);
+                        [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[sim_resume_days(i), treat_days(i+1)],[u_new v_new s_new]);
                         U(:,3) = U(:,3) .* exp(-sig * (T-treat_days(i)));
-                        x = [x T(1,1) T(end,1)];
-                        if logQ
-                            y1 = [y1 log10(U(1,1)*total_cell_num) log10(U(end,1)*total_cell_num)];
-                            y2 = [y2 log10(U(1,2)*total_cell_num) log10(U(end,2)*total_cell_num)];
-                            ys = [ys log10(U(1,3)*1) log10(U(end,3)*1)];
-                        else
-                            y1 = [y1 U(1,1)*total_cell_num U(end,1)*total_cell_num];
-                            y2 = [y2 U(1,2)*total_cell_num U(end,2)*total_cell_num];
-                            ys = [ys U(1,3)*1 U(end,3)*1];
-                        end
-                        y3 = [y3 U(1,1) U(end,1)];
-                        y4 = [y4 U(1,2) U(end,2)]; 
-                        SS = sum(U,2);
-                        y5 = [y5 U(1,1)./SS(1)*100 U(end,1)./SS(end)*100];
-                        y6 = [y6 p./(1+l.*(U(1,2)).^n) p./(1+l.*(U(end,2)).^n)];
-                        y7 = [y7 r1./(1+h.*(U(1,2)).^z) r1./(1+h.*(U(end,2)).^z)];
-
-
-
-
-                        xx = x(1:end-1);
-                        yy = y6(1:end-1);
-                        yyy = y7(1:end-1);
-
-
 
                     end
 
@@ -192,14 +149,6 @@ for ii=1:len_surv_cont
                     else
                         dose_reprog_time_cont(jj,k,:,gg,ii) = U(sample_times+dose1offset,1);
                     end
-        %            x = [];
-        %             y1 = [];
-        %             y2 = [];
-                    y3 = [];
-                    y4 = [];
-                    y5 = [];
-                    y6 = [];
-                    y7 = [];
                     if jj > 1
                         times(jj,:) = T(sample_times);
                     else
@@ -222,16 +171,16 @@ end
 s_ylabel = '#CSC/#CSC(conventional)';
 s_xlabel = 'Dose (Gy)';
 s_legend_title = 'Survivin Control Params:';
-save_prefix = ['C:\Users\jhvo9\Documents\vojh MCSB Repo\Projects\Yu\Varying Fractionation\Better Visuals\',lower(fdbk_type), '_relCSC_time_'];
+save_prefix = ['C:\Users\jhvo9\Documents\vojh MCSB Repo\Projects\GBM Modeling\Survivin Models\Model 2 - Dedifferentiation Term\figs\relCSC_variational_expts\ctrl\'];
 xlim_vec = [min(Doses) max(Doses)];
-ylim_vec = [0 1.35];
+ylim_vec = [0 5.5];
 leg_pos = 'north';
 line_types = cell(1,len_surv_cont);
 for k=2:len_surv_cont
     line_types{k} = '--';
 end
 line_types{1} = '-';
-suffix = '_alt'; % i.e. '_testN'
+suffix = '_days'; % i.e. '_testN'
 per_ratio = zeros(len_D,len_C,len_samples,len_surv_cont);
 fig_start = 100;
 for gg=1:len_zeta
@@ -250,15 +199,16 @@ for gg=1:len_zeta
         end
         lgdX = legend('Location',leg_pos);
         title(lgdX,s_legend_title)
-        title([title_prefix,num2str(round(mean(times(:,t)),ceil(log10(mean(times(:,t)))),'significant')),' days'])
+        days_temp = num2str(round(mean(times(:,t)),ceil(log10(mean(times(:,t)))),'significant'));
+        title([title_prefix,days_temp,' days'])
         ylabel(s_ylabel)
         xlabel(s_xlabel)
         xlim(xlim_vec)
         ylim(ylim_vec)
         hold off;
         if saveQ
-            savefig([save_prefix num2str(sample_times(t)) suffix '.fig'])
-            saveas(gcf,[save_prefix num2str(sample_times(t)) suffix '.png'])
+            savefig([save_prefix num2str(days_temp) suffix '.fig']) % sample_times(t)
+            saveas(gcf,[save_prefix num2str(days_temp) suffix '.png']) % sample_times(t)
         end
     end
 end

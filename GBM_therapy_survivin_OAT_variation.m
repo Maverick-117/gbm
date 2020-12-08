@@ -4,8 +4,6 @@ clear;
 
 load('fit_result_data_GBM.mat')
 
-sig_vec = [10^(16) 1e-1 1 1e1]; %* sig;
-len_sig = length(sig_vec);
 %% Defining Variables
 % Radiotherapy model
 par = parameters;
@@ -17,7 +15,6 @@ len_D = length(Doses);
 pre_sample_times = [100 300 600 900 1200 1500];
 len_samples = length(pre_sample_times);
 
-dose1offset = 0;
 line_lengths = [0.8 2.3];
 treat_start = 100; % treatment start time relative to start of simulation
 acq_days_after_RT = 2500; % simulation length after last fraction
@@ -27,10 +24,7 @@ p = .505; % self renewal probability
 
 h = 10^(5); z = 1; % control the strenth of inhibitory signal
 
-
 saveQ = false; logQ = false; weak_feedback_Q = true; srvQ = true;
-mu_bar = 0; chi = 0;
-
 
 if weak_feedback_Q
     l = 10^(-7); % weak feedback
@@ -41,6 +35,7 @@ n = 1;
 %low = -3; high = -3; c_l = 1*(high-low+1);
 %C = [0 5.196*10.^(linspace(low,high,c_l))]; % ramp up by factors of 2 later
 C = [5.196*10^(-3)];
+chi = 10^4; mu_bar = C(1);
 % [0 5.196*2.^(linspace(low,high,c_l))];
 len_C = length(C);
 times = zeros(len_D,len_samples);
@@ -59,9 +54,12 @@ rho = 10^9; % density of cells in the region of interest (cells/cm^3)
 total_cell_num = 4/3*pi()*ROI_radius^3*rho;
 total_start_cell_num = total_cell_num*total_start_frac;
 
+%% changing variables
+sig_vec = [1e16 1e-3 1e-2 1e-1 1];% [10^(16) 0.1 1 10] * sig;
+len_sig = length(sig_vec);
+
 if srvQ
-    %srvn_csc = 3.6; srvn_dcc = 0.05;
-    srvn_zeta = [3.6, 0.05]; %; 3.6, 0.5; 3.6, 5];
+    srvn_zeta = [3.6, 0.05]; %; 3.6, 0.5; 3.6, 5]; % [{srvn_csc, srvn_dcc}]
     % model is more sensitive to this than to cont_p
 else
     %srvn_csc = 0; srvn_dcc = 0;
@@ -73,16 +71,22 @@ cont_p_a = 10^4;
 cont_p = [1 10] * cont_p_a;
 %cont_p = [0 0; 1 0.1; 1 1; 1 10; 1 100] * cont_p_a;
 % the simulation seems to be sort of sensitive to control parameters
-%cont_p = [1 10] * cont_p_a;
-%cont_p_a = 10^4; % \gamma_{\alpha_V}
-%cont_p_b = [0.1 10]; % \gamma_{\beta_V}
-compt_mult = 2; % \zeta_U; in reality, this should be higher than 1 since stem cells 
+%cont_p_a := \gamma_{\alpha_V}
+%cont_p_b := \gamma_{\beta_V}
+compt_mult = 100; % \zeta_U; in reality, this should be higher than 1 since stem cells 
                 % tend to more difficult to kill, so a higher denominator is more attractive
-len_surv_cont = size(cont_p); 
-len_surv_cont = len_surv_cont(1);
+len_surv_cont = size(cont_p); len_surv_cont = len_surv_cont(1);
 len_zeta = size(srvn_zeta); len_zeta = len_zeta(1);
 dose_reprog_time_cont = zeros(len_D,len_C,len_samples,len_zeta,len_sig,len_surv_cont);
-srvn_cmtv = zeros(len_D,len_C,len_zeta,len_sig,len_surv_cont);
+srvn_cmtv = zeros(len_samples + 1,len_D,len_C,len_zeta,len_sig,len_surv_cont); % len_samples + 1 to get the sample values and then the total for the whole sim
+srvn_max = zeros(len_D,len_C,len_zeta,len_sig,len_surv_cont); % len_samples + 1 to get the sample values and then the total for the whole sim
+parameter_mesh = {Doses; C; srvn_zeta; pre_sample_times; sig_vec; cont_p};
+slider = sig_vec;
+if len_sig > 1
+    ss_start = 1;
+else
+    ss_start = 1;
+end
 N_c = len_sig;
 color = cell(1,N_c);
 for jj=2:N_c
@@ -130,10 +134,9 @@ for ii=1:len_surv_cont
                         [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, treat_days(1)],[sc_start tc_start srv_start], options);
                         [Ta,Ua] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, treat_days(1)],[sc_start tc_start srv_start], options);
                         % Without treatment 
-                        [Tb,Ub] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, acq_end],[sc_start tc_start srv_start], options);
                         U(:,3) = U(:,3) .* exp(-sig * (T)); 
                         Ua(:,3) = Ua(:,3) .* exp(-sig * (Ta)); 
-                        Ub(:,3) = Ub(:,3) .* exp(-sig * (Tb)); % using an integrating factor to bypass stiffness
+                        % using an integrating factor to bypass stiffness
 
 
                         x = [T(end,1)];
@@ -146,18 +149,10 @@ for ii=1:len_surv_cont
                             y2 = [U(end,2)*total_cell_num];
                             ys = [U(end,3)*1];
                         end
-                        y3 = [U(end,1)];
-                        y4 = [U(end,2)];
-                        S = sum(U,2);
-                        y5 = [U(end,1)./S(end)*100];
-                        y6 = [p./(1+l.*(U(end,2)).^n)];
-                        y7 = [r1./(1+h.*(U(end,2)).^z)];
-
-
                         for i = 1:length(sim_resume_days)
                         %%%%%%% with stem cell %%%%%%%%%
                             LQ_param = {a1, b1, a2, b2, c, D};
-                            [u_new,v_new, s_new] = radiotherapy(U,LQ_param, surv_vec);
+                            [u_new,v_new, s_new,SF_U, SF_V] = radiotherapy(U,LQ_param, surv_vec);
 %                             if sig > 10^6
 %                                 s_new = 0;
 %                             end
@@ -173,49 +168,24 @@ for ii=1:len_surv_cont
                                 y2 = [y2 U(1,2)*total_cell_num U(end,2)*total_cell_num];
                                 ys = [ys U(1,3)*1 U(end,3)*1];
                             end
-                            y3 = [y3 U(1,1) U(end,1)];
-                            y4 = [y4 U(1,2) U(end,2)]; 
-                            SS = sum(U,2);
-                            y5 = [y5 U(1,1)./SS(1)*100 U(end,1)./SS(end)*100];
-                            y6 = [y6 p./(1+l.*(U(1,2)).^n) p./(1+l.*(U(end,2)).^n)];
-                            y7 = [y7 r1./(1+h.*(U(1,2)).^z) r1./(1+h.*(U(end,2)).^z)];
-
-
-
-
-                            xx = x(1:end-1);
-                            yy = y6(1:end-1);
-                            yyy = y7(1:end-1);
 
 
 
                         end
-                        
+                        u_sc  = [Ua(:,1)'*total_cell_num y1(2:end-2) U(:,1)'*total_cell_num];
+                        u_dc  = [Ua(:,2)'*total_cell_num y2(2:end-2) U(:,2)'*total_cell_num];
+                        u_srv = [zeros(size(Ua(:,1)')) ys(2:end-2) U(:,3)'];
+                        t_vec = [Ta' x(2:end-2) T'];
                         sample_times = 1:len_samples;
                         for i=1:len_samples
-                            sample_times(i) = find(T < treat_start + pre_sample_times(i),1,'last');
+                            sample_times(i) = find(t_vec < treat_start + pre_sample_times(i),1,'last');
                         end
-                        if jj > 1
-                            dose_reprog_time_cont(jj,k,:,gg,ss,ii) = U(sample_times,1);
-                        else
-                            dose_reprog_time_cont(jj,k,:,gg,ss,ii) = U(sample_times+dose1offset,1);
-                        end
-            %            x = [];
-            %             y1 = [];
-            %             y2 = [];
-                        y3 = [];
-                        y4 = [];
-                        y5 = [];
-                        y6 = [];
-                        y7 = [];
-                        if jj > 1
-                            times(jj,:) = T(sample_times);
-                        else
-                            times(jj,:) = T([sample_times(1)+dose1offset sample_times(2:end)]); %same as before but with offset at first time to let times line up across dosage.
-                        end
-                        test_x = [x(1:end-2) T']; test_y = [ys(1:end-2) U(:,3)'];
-                        srvn_cmtv(jj,k,gg,ss,ii) = trapz(test_x,test_y);
-
+                        dose_reprog_time_cont(jj,k,:,gg,ss,ii) = u_sc(sample_times);
+                        times(jj,:) = t_vec(sample_times);
+                        %test_x = t_vec(length(Ta)+1:end); test_y = u_srv(length(Ta)+1:end);
+                        srvn_cumsum = cumsum(u_srv); 
+                        srvn_cmtv(:,jj,k,gg,ss,ii) = [srvn_cumsum(sample_times) srvn_cumsum(end)]; %trapz(test_x,test_y);
+                        srvn_max(jj,k,gg,ss,ii) = max(u_srv);
                     end
                 end
             end
@@ -234,7 +204,7 @@ s_xlabel = 'Dose (Gy)';
 s_legend_title = 'Survivin Decay Rate:';
 save_prefix = ['C:\Users\jhvo9\Documents\vojh MCSB Repo\Projects\Yu\Varying Fractionation\Better Visuals\',lower(fdbk_type), '_relCSC_time_'];
 xlim_vec = [min(Doses) max(Doses)];
-ylim_vec = [0 1.35];
+ylim_vec = [0 5.5];
 leg_pos = 'north';
 line_types = cell(1,len_surv_cont);
 for k=2:len_surv_cont
@@ -248,15 +218,18 @@ for gg=1:len_zeta
     for t=1:len_samples
         title_prefix = {[fdbk_type,' Fdbk; (' num2str(cont_p(ii,1)) ',' num2str(cont_p(ii,2)) ',' num2str(compt_mult) ');'] ['(' num2str(srvn_zeta(gg,1)) ',' num2str(srvn_zeta(gg,2)) '); ' 'Relative CSC at time ~ ' ]};
         figX = figure(fig_start*gg+(t-1));
-        hold on;
+        
         for ss=1:len_sig
             for k=1:len_C
                 for ii=1:len_surv_cont
+                    figX;
+                    hold on;
                     plot(Doses,dose_reprog_time_cont(:,k,t,gg,ss,ii)/dose_reprog_time_cont(2,k,t,gg,ss,ii),'o',...
                         'color', color{ss},'LineStyle',line_types{ii},'LineWidth',line_lengths(2),...
                         'DisplayName',num2str(sig_vec(ss)));
+                    hold off;
                     % 
-                    per_ratio(:,k,t,gg,ii) = max(0,1-dose_reprog_time_cont(:,k,t,gg,ss,ii)/dose_reprog_time_cont(2,k,t,gg,ss,ii));
+                    %per_ratio(:,k,t,gg,ii) = max(0,1-dose_reprog_time_cont(:,k,t,gg,ss,ii)/dose_reprog_time_cont(2,k,t,gg,ss,ii));
                 end
             end
         end
@@ -278,71 +251,105 @@ for gg=1:len_zeta
 end
 fig_start2 = 300;
 for gg=1:len_zeta
-    title_prefix = [fdbk_type,' Fdbk; (' num2str(cont_p(ii,1)) ',' num2str(cont_p(ii,2)) ',' num2str(compt_mult) '); ' '(' num2str(srvn_zeta(gg,1)) ',' num2str(srvn_zeta(gg,2)) '); '];
-    figX = figure(fig_start2*gg);
-    hold on;
-    for ss=1:len_sig
-        for k=1:len_C
-            for ii=1:len_surv_cont
-                plot(Doses,srvn_cmtv(:,k,gg,ss,ii),'o',...
-                    'color', color{ss},'LineStyle',line_types{ii},'LineWidth',line_lengths(2),...
-                    'DisplayName',num2str(sig_vec(ss)));
-                % 
-                per_ratio(:,k,t,gg,ii) = max(0,1-dose_reprog_time_cont(:,k,t,gg,ss,ii)/dose_reprog_time_cont(2,k,t,gg,ss,ii));
+    %for t=1:(len_samples+1)
+    TTT = 1;
+        title_prefix = {[fdbk_type,' Fdbk; (' num2str(cont_p(ii,1)) ',' num2str(cont_p(ii,2)) ',' num2str(compt_mult) ');'] ['(' num2str(srvn_zeta(gg,1)) ',' num2str(srvn_zeta(gg,2)) '); ' 'Relative Cmtve. Survivin at time ~ ' ]};
+        figX = figure(fig_start2*gg + (TTT-1));
+        hold on;
+        for ss=ss_start:len_sig
+            for k=1:len_C
+                for ii=1:len_surv_cont
+                    plot(Doses,srvn_cmtv(TTT,:,k,gg,ss,ii)/srvn_cmtv(TTT,2,k,gg,ss,ii),'o',...
+                        'color', color{ss},'LineStyle',':','LineWidth',line_lengths(2),...
+                        'DisplayName',num2str(sig_vec(ss)));
+                    % 
+                    %per_ratio(:,k,t,gg,ii) = max(0,1-dose_reprog_time_cont(:,k,t,gg,ss,ii)/dose_reprog_time_cont(2,k,t,gg,ss,ii));
+                end
             end
         end
-    end
-    lgdX = legend('Location',leg_pos);
-    title(lgdX,s_legend_title)
-    %[title_prefix,num2str(round(mean(times(:,t)),ceil(log10(mean(times(:,t)))),'significant')),' days']
-    %title_prefix{2} = [title_prefix{2} num2str(round(mean(times(:,t)),ceil(log10(mean(times(:,t)))),'significant')),' days'];
-    title(title_prefix)
-    ylabel('Cumulative Survivin')
-    xlabel(s_xlabel)
-    xlim(xlim_vec)
-    %ylim(ylim_vec)
-    hold off;
-    if saveQ
-        savefig([save_prefix num2str(sample_times(t)) suffix '.fig'])
-        saveas(gcf,[save_prefix num2str(sample_times(t)) suffix '.png'])
-    end
-    
+        lgdX = legend('Location',leg_pos);
+        title(lgdX,s_legend_title)
+        %[title_prefix,num2str(round(mean(times(:,t)),ceil(log10(mean(times(:,t)))),'significant')),' days']
+        title_prefix{2} = [title_prefix{2} num2str(round(mean(times(:,TTT)),ceil(log10(mean(times(:,TTT)))),'significant')),' days'];
+        title(title_prefix)
+        ylabel('Cumulative Survivin/Cumulative Survivin(conventional)')
+        xlabel(s_xlabel)
+        xlim(xlim_vec)
+        %ylim(ylim_vec)
+        hold off;
+        if saveQ
+            savefig([save_prefix num2str(sample_times(t)) suffix '.fig'])
+            saveas(gcf,[save_prefix num2str(sample_times(t)) suffix '.png'])
+        end
+    %end
 end
 
 fig_start3 = 400;
 for gg=1:len_zeta
-    title_prefix = [fdbk_type,' Fdbk; (' num2str(cont_p(ii,1)) ',' num2str(cont_p(ii,2)) ',' num2str(compt_mult) '); ' '(' num2str(srvn_zeta(gg,1)) ',' num2str(srvn_zeta(gg,2)) '); '];
-    figX = figure(fig_start3*gg);
-    hold on;
-    for ss=1:len_sig
-        for k=1:len_C
-            for ii=1:len_surv_cont
-                plot(dose_reprog_time_cont(:,k,t,gg,ss,ii)/dose_reprog_time_cont(2,k,t,gg,ss,ii),srvn_cmtv(:,k,gg,ss,ii),'o',...
-                    'color', color{ss},'LineStyle',line_types{ii},'LineWidth',line_lengths(2),...
-                    'DisplayName',num2str(sig_vec(ss)));
-                % 
-                per_ratio(:,k,t,gg,ii) = max(0,1-dose_reprog_time_cont(:,k,t,gg,ss,ii)/dose_reprog_time_cont(2,k,t,gg,ss,ii));
+        title_prefix = {[fdbk_type,' Fdbk; (' num2str(cont_p(ii,1)) ',' num2str(cont_p(ii,2)) ',' num2str(compt_mult) ');'] ['(' num2str(srvn_zeta(gg,1)) ',' num2str(srvn_zeta(gg,2)) '); ' 'Relative Max Survivin' ]};
+        figX = figure(fig_start3*gg + (t-1));
+        hold on;
+        for ss=ss_start:len_sig
+            for k=1:len_C
+                for ii=1:len_surv_cont
+                    plot(Doses,srvn_max(:,k,gg,ss,ii)/srvn_max(2,k,gg,ss,ii),'o',...
+                        'color', color{ss},'LineStyle',':','LineWidth',line_lengths(2),...
+                        'DisplayName',num2str(sig_vec(ss)));
+                    % 
+                    %per_ratio(:,k,t,gg,ii) = max(0,1-dose_reprog_time_cont(:,k,t,gg,ss,ii)/dose_reprog_time_cont(2,k,t,gg,ss,ii));
+                end
             end
         end
-    end
-    lgdX = legend('Location','east');
-    title(lgdX,s_legend_title)
-    %[title_prefix,num2str(round(mean(times(:,t)),ceil(log10(mean(times(:,t)))),'significant')),' days']
-    %title_prefix{2} = [title_prefix{2} num2str(round(mean(times(:,t)),ceil(log10(mean(times(:,t)))),'significant')),' days'];
-    title(title_prefix)
-    ylabel('Cumulative Survivin')
-    xlabel(s_ylabel)
-    %xlim(xlim_vec)
-    %ylim(ylim_vec)
-    hold off;
-    if saveQ
-        savefig([save_prefix num2str(sample_times(t)) suffix '.fig'])
-        saveas(gcf,[save_prefix num2str(sample_times(t)) suffix '.png'])
-    end
-    
+        lgdX = legend('Location',leg_pos);
+        title(lgdX,s_legend_title)
+        %[title_prefix,num2str(round(mean(times(:,t)),ceil(log10(mean(times(:,t)))),'significant')),' days']
+        %title_prefix{2} = [title_prefix{2} num2str(round(mean(times(:,t)),ceil(log10(mean(times(:,t)))),'significant')),' days'];
+        title(title_prefix)
+        ylabel('Max Survivin/Max Survivin(conventional)')
+        xlabel(s_xlabel)
+        xlim(xlim_vec)
+        %ylim(ylim_vec)
+        hold off;
+        if saveQ
+            savefig([save_prefix num2str(sample_times(t)) suffix '.fig'])
+            saveas(gcf,[save_prefix num2str(sample_times(t)) suffix '.png'])
+        end
 end
 
-per_ratio(per_ratio == 0) = nan;
+% fig_start3 = 400;
+% for gg=1:len_zeta
+%     title_prefix = [fdbk_type,' Fdbk; (' num2str(cont_p(ii,1)) ',' num2str(cont_p(ii,2)) ',' num2str(compt_mult) '); ' '(' num2str(srvn_zeta(gg,1)) ',' num2str(srvn_zeta(gg,2)) '); '];
+%     figX = figure(fig_start3*gg);
+%     hold on;
+%     for ss=1:len_sig
+%         for k=1:len_C
+%             for ii=1:len_surv_cont
+%                 plot(dose_reprog_time_cont(:,k,t,gg,ss,ii)/dose_reprog_time_cont(2,k,t,gg,ss,ii),srvn_cmtv(:,k,gg,ss,ii),'o',...
+%                     'color', color{ss},'LineStyle',line_types{ii},'LineWidth',line_lengths(2),...
+%                     'DisplayName',num2str(sig_vec(ss)));
+%                 % 
+%                 per_ratio(:,k,t,gg,ii) = max(0,1-dose_reprog_time_cont(:,k,t,gg,ss,ii)/dose_reprog_time_cont(2,k,t,gg,ss,ii));
+%             end
+%         end
+%     end
+%     lgdX = legend('Location','east');
+%     title(lgdX,s_legend_title)
+%     %[title_prefix,num2str(round(mean(times(:,t)),ceil(log10(mean(times(:,t)))),'significant')),' days']
+%     %title_prefix{2} = [title_prefix{2} num2str(round(mean(times(:,t)),ceil(log10(mean(times(:,t)))),'significant')),' days'];
+%     title(title_prefix)
+%     ylabel('Cumulative Survivin')
+%     xlabel(s_ylabel)
+%     %xlim(xlim_vec)
+%     %ylim(ylim_vec)
+%     hold off;
+%     if saveQ
+%         savefig([save_prefix num2str(sample_times(t)) suffix '.fig'])
+%         saveas(gcf,[save_prefix num2str(sample_times(t)) suffix '.png'])
+%     end
+%     
+% end
+% 
+% per_ratio(per_ratio == 0) = nan;
                     
 
 % fig_start2 = 60;

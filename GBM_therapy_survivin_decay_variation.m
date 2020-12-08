@@ -1,7 +1,7 @@
-%% Basic 
+2%% Basic 
 clc;
 clear;
-
+close all
 load('fit_result_data_GBM.mat')
 
 sig_vec = [10^(16) 0.1 1 10] * sig;
@@ -14,7 +14,7 @@ Doses = [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20]; % dose fraction si
 Frac = [60 30 20 15 12 10 8 7 6 6 5 5 4 4 4 3 3 3 3 3]; 
 len_D = length(Doses);
 %sample_times = [1 5 10 20 30]; 
-pre_sample_times = [100 300 600 900 1200 1500];
+pre_sample_times = [100 300 600 900 1200 1500]; % 
 len_samples = length(pre_sample_times);
 
 dose1offset = 0;
@@ -26,18 +26,6 @@ acq_days_after_RT = 2500; % simulation length after last fraction
 p = .505; % self renewal probability 
 
 h = 10^(5); z = 1; % control the strenth of inhibitory signal
-
-
-saveQ = false; logQ = true; weak_feedback_Q = false; srvQ = true;
-
-
-
-if weak_feedback_Q
-    l = 10^(-7); % weak feedback
-else
-    l = 10^(3); % strong feedback 
-end
-n = 1; 
 %low = -3; high = -3; c_l = 1*(high-low+1);
 %C = [0 5.196*10.^(linspace(low,high,c_l))]; % ramp up by factors of 2 later
 C = [5.196*10^(-3)];
@@ -46,11 +34,23 @@ len_C = length(C);
 times = zeros(len_D,len_samples);
 
 
+saveQ = true; logQ = true; weak_feedback_Q = true; srvQ = true;
+mu_bar = C; chi = 10^4;
+
+
+if weak_feedback_Q
+    l = 10^(-7); % weak feedback
+else
+    l = 10^(3); % strong feedback 
+end
+n = 1; 
+
+
 
 % dedifferentiation rate
-r1 = log10(2)/DT; % growth rate of CSC
-r2 = log10(2)/DT; % growth rate of DCC
-d  = log10(2)/DT; % death rate of DCC
+r1 = log(2)/DT; % growth rate of CSC
+r2 = log(2)/DT; % growth rate of DCC
+d  = log(2)/DT; % death rate of DCC
 
 % Initial Condition
 total_start_frac = 0.2/64;
@@ -61,13 +61,15 @@ total_start_cell_num = total_cell_num*total_start_frac;
 
 if srvQ
     %srvn_csc = 3.6; srvn_dcc = 0.05;
-    srvn_zeta = [3.6, 0.05]; %; 3.6, 0.5; 3.6, 5];
     % model is more sensitive to this than to cont_p
+    zeta_mult1 = 1;
+    zeta_mult2 = 1; %; 3.6, 0.5; 3.6, 5];
 else
     %srvn_csc = 0; srvn_dcc = 0;
-    srvn_zeta = [0, 0];
+    zeta_mult1 = 0;
+    zeta_mult2 = 0;
 end
-
+srvn_zeta = [3.6 * zeta_mult1, 0.05 * zeta_mult2];
 
 cont_p_a = 10^4;
 cont_p = [1 10] * cont_p_a;
@@ -76,7 +78,7 @@ cont_p = [1 10] * cont_p_a;
 %cont_p = [1 10] * cont_p_a;
 %cont_p_a = 10^4; % \gamma_{\alpha_V}
 %cont_p_b = [0.1 10]; % \gamma_{\beta_V}
-compt_mult = 2; % \zeta_U; in reality, this should be higher than 1 since stem cells 
+compt_mult = 10; % \zeta_U; in reality, this should be higher than 1 since stem cells 
                 % tend to more difficult to kill, so a higher denominator is more attractive
 len_surv_cont = size(cont_p); 
 len_surv_cont = len_surv_cont(1);
@@ -126,10 +128,10 @@ for ii=1:len_surv_cont
                         % ODE simulation before first fraction of RT
                         options = odeset('Refine',1, 'maxstep', 1);
                         % With treatment 
-                        [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, treat_days(1)],[sc_start tc_start srv_start], options);
-                        [Ta,Ua] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, treat_days(1)],[sc_start tc_start srv_start], options);
+                        [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, treat_days(1)],[sc_start tc_start srv_start], options);
+                        [Ta,Ua] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, treat_days(1)],[sc_start tc_start srv_start], options);
                         % Without treatment 
-                        [Tb,Ub] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[0, acq_end],[sc_start tc_start srv_start], options);
+                        [Tb,Ub] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, acq_end],[sc_start tc_start srv_start], options);
                         U(:,3) = U(:,3) .* exp(-sig * (T)); 
                         Ua(:,3) = Ua(:,3) .* exp(-sig * (Ta)); 
                         Ub(:,3) = Ub(:,3) .* exp(-sig * (Tb)); % using an integrating factor to bypass stiffness
@@ -160,7 +162,7 @@ for ii=1:len_surv_cont
 %                             if sig > 10^6
 %                                 s_new = 0;
 %                             end
-                            [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig),[sim_resume_days(i), treat_days(i+1)],[u_new v_new s_new]);
+                            [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[sim_resume_days(i), treat_days(i+1)],[u_new v_new s_new]);
                             U(:,3) = U(:,3) .* exp(-sig * (T-treat_days(i)));
                             x = [x T(1,1) T(end,1)];
                             if logQ
@@ -178,9 +180,6 @@ for ii=1:len_surv_cont
                             y5 = [y5 U(1,1)./SS(1)*100 U(end,1)./SS(end)*100];
                             y6 = [y6 p./(1+l.*(U(1,2)).^n) p./(1+l.*(U(end,2)).^n)];
                             y7 = [y7 r1./(1+h.*(U(1,2)).^z) r1./(1+h.*(U(end,2)).^z)];
-
-
-
 
                             xx = x(1:end-1);
                             yy = y6(1:end-1);
@@ -227,30 +226,30 @@ if weak_feedback_Q
 else
     fdbk_type = 'Strong';
 end
-s_ylabel = '#CSC/#CSC(conventional)';
+s_ylabel = '%CSC';
 s_xlabel = 'Dose (Gy)';
 s_legend_title = 'Survivin Decay Rate:';
-save_prefix = ['C:\Users\jhvo9\Documents\vojh MCSB Repo\Projects\Yu\Varying Fractionation\Better Visuals\',lower(fdbk_type), '_relCSC_time_'];
+save_prefix = ['C:\Users\jhvo9\Google Drive (vojh1@uci.edu)\a PhD Projects\GBM Modeling\Survivin Models\Model 2 - Dedifferentiation Term\non-monotonic-investigation\absolute_csc_frac\'];%'C:\Users\jhvo9\Documents\vojh MCSB Repo\Projects\Yu\Varying Fractionation\Better Visuals\',lower(fdbk_type), '_relCSC_time_'];
 xlim_vec = [min(Doses) max(Doses)];
-ylim_vec = [0 1.35];
+ylim_vec = [0 Inf];
 leg_pos = 'north';
 line_types = cell(1,len_surv_cont);
 for k=2:len_surv_cont
     line_types{k} = '--';
 end
 line_types{1} = '-';
-suffix = '_alt'; % i.e. '_testN'
+suffix = '_'; % i.e. '_testN'
 per_ratio = zeros(len_D,len_C,len_samples,len_surv_cont);
 fig_start = 100;
 for gg=1:len_zeta
     for t=1:len_samples
-        title_prefix = {[fdbk_type,' Fdbk; (' num2str(cont_p(ii,1)) ',' num2str(cont_p(ii,2)) ',' num2str(compt_mult) ');'] ['(' num2str(srvn_zeta(gg,1)) ',' num2str(srvn_zeta(gg,2)) '); ' 'Relative CSC at time ~ ' ]};
+        title_prefix = {[fdbk_type,' Fdbk; (' num2str(cont_p(ii,1)) ',' num2str(cont_p(ii,2)) ',' num2str(compt_mult) ');'] ['(' num2str(srvn_zeta(gg,1)) ',' num2str(srvn_zeta(gg,2)) '); ' 'Frac CSC at time ~ ' ]};
         figX = figure(fig_start*gg+(t-1));
         hold on;
         for ss=1:len_sig
             for k=1:len_C
                 for ii=1:len_surv_cont
-                    plot(Doses,dose_reprog_time_cont(:,k,t,gg,ss,ii)/dose_reprog_time_cont(2,k,t,gg,ss,ii),'o',...
+                    plot(Doses,dose_reprog_time_cont(:,k,t,gg,ss,ii),'o',...
                         'color', color{ss},'LineStyle',line_types{ii},'LineWidth',line_lengths(2),...
                         'DisplayName',num2str(sig_vec(ss)));
                     % 
@@ -267,10 +266,11 @@ for gg=1:len_zeta
         xlabel(s_xlabel)
         xlim(xlim_vec)
         ylim(ylim_vec)
-        hold off;
+        hold off;                                            
         if saveQ
-            savefig([save_prefix num2str(sample_times(t)) suffix '.fig'])
-            saveas(gcf,[save_prefix num2str(sample_times(t)) suffix '.png'])
+            save_label = [save_prefix num2str(sample_times(t)) '_' num2str(srvn_zeta(gg,1)) '_' num2str(srvn_zeta(gg,2))];
+            savefig([ save_label '.fig'])
+            saveas(gcf,[ save_label '.png'])
         end
     end
 end
