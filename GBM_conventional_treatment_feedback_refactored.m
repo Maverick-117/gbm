@@ -3,7 +3,7 @@ clc;
 clear;
 close all
 load('fit_result_data_GBM.mat')
-sig = 10^16 * sig; 
+sig = 10^0 * sig; 
 %% Defining Variables and Initialization
 % Radiotherapy model
 par = parameters;%[.052 .01 .071 .197 .203];%   
@@ -44,17 +44,22 @@ ROI_radius = 1; % Radius of the simulation region of intrest
 rho = 10^9; % density of cells in the region of interest (cells/cm^3)
 total_cell_num = 4/3*pi()*ROI_radius^3*rho;
 total_start_cell_num = total_cell_num*total_start_frac;
-suffix = '_zero_case';
+suffix = '_zero_neg_zero_survivin_debug_case';
+% _default_case := non-zero negative feedback, non-zero dediff
+% _zero_case := zero negative feedback, non-zero dediff
+% _zero_dediff_case := non-zero negative feedback, zero dediff
+% _zero_neg_zero_dediff_case := zero negative feedback, zero dediff
 saveQ = false; 
 
 logQ = false; srvQ = true; logFracQ = false;
 srv_start = 0; %initializing survivin amount
-cont_p_a = 10^4; cont_p_b = 10*cont_p_a; compt_mult = 100;
+%cont_p_a = 10^4; cont_p_b = 10*cont_p_a; compt_mult = 100;
+cont_p_a = 0; cont_p_b = 10*cont_p_a; compt_mult = 100;
 if srvQ
     %srvn_csc = 3.6; srvn_dcc = 0.05;
     % model is more sensitive to this than to cont_p
     zeta_mult1 = 1;
-    zeta_mult2 = 1; %; 3.6, 0.5; 3.6, 5];
+    zeta_mult2 = .1; %; 3.6, 0.5; 3.6, 5];
 else
     %srvn_csc = 0; srvn_dcc = 0;
     zeta_mult1 = 0;
@@ -90,14 +95,14 @@ for g = 1:length(cell_lines)
         % Defining treatment days and ODE simulation start time after each fraction
         weeks = floor(frac_num/5);
         total_days = frac_num + 2*weeks;
-        acq_end = treat_start + 150;%treat_start + total_days + acq_days_after_RT - 1;
+        acq_end = treat_start + 1500;%treat_start + total_days + acq_days_after_RT - 1;
         A = repmat([1 1 1 1 1 0 0], 1, weeks+1);
         A_new = A(1:total_days);
         treat_days = find(A_new==1)+treat_start-1;
         sim_resume_days = treat_days+10/(60*24); % ODE simulation resumes 10 minutes after RT
         treat_days = [treat_days acq_end];     
         % ODE simulation before first fraction of RT
-        options = odeset('Refine',1, 'maxstep', 1);
+        options = odeset('maxstep', .5);
         % With treatment 
         [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, treat_days(1)],[sc_start tc_start srv_start], options);
         [Ta,Ua] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[0, treat_days(1)],[sc_start tc_start srv_start], options);
@@ -113,11 +118,11 @@ for g = 1:length(cell_lines)
         if logQ
             y1 = [log10(U(end,1)*total_cell_num)];
             y2 = [log10(U(end,2)*total_cell_num)];
-            ys = [log10(UU(end)*1)];
+            ys = [log10(U(end,3)*1)];
         else
             y1 = [U(end,1)*total_cell_num];
             y2 = [U(end,2)*total_cell_num];
-            ys = [UU(end)*1];
+            ys = [U(end,3)*1];
         end
         S = U(:,1)+U(:,2);
         y5 = [U(end,1)./S(end)*100];
@@ -130,18 +135,24 @@ for g = 1:length(cell_lines)
             LQ_param = {a1, b1, a2, b2, c, D};
             [u_new,v_new, s_new,SF_U, SF_V] = radiotherapy(U, LQ_param, surv_vec);
             [T,U] = ode45(@(t,U) stem_ODE_feedback(t, U, r1, r2, d, p, h, z, l, n, sig, mu_bar, chi),[sim_resume_days(i), treat_days(i+1)],[u_new v_new s_new]);
+%             d_vec = []; 
+%             for iii=1:length(T)
+%                 d_vec = [d_vec stem_ODE_feedback(T(iii), U(iii,:), r1, r2, d, p, h, z, l, n, sig, mu_bar, chi)];
+%             end
             %fprintf('old UU: %f, new UU: %f', UU, U(end,3) .* exp(-sig * (T-treat_days(i)) )
             UU = U(:,3) .* exp(-sig * (T-treat_days(i))); % using an integrating factor to bypass stiffness
             U(:,3) = UU;
+            t1 = (2*p./(1+l*U(:,2))-1).*r1./(1+h*U(:,2)).*U(:,1);
+            t2 = mu_bar * chi .* U(:,3) ./ ( 1 + chi .* U(:,3) ) .* U(:,2);
             x = [x T(1,1) T(end,1)];
             if logQ
                 y1 = [y1 log10(U(1,1)*total_cell_num) log10(U(end,1)*total_cell_num)];
                 y2 = [y2 log10(U(1,2)*total_cell_num) log10(U(end,2)*total_cell_num)];
-                ys = [ys log10(UU(1)*1) log10(UU(end)*1)];
+                ys = [ys log10(U(1,3)*1) log10(U(end,3)*1)];
             else
                 y1 = [y1 U(1,1)*total_cell_num U(end,1)*total_cell_num];
                 y2 = [y2 U(1,2)*total_cell_num U(end,2)*total_cell_num];
-                ys = [ys UU(1)*1 UU(end)*1];
+                ys = [ys U(1,3)*1 U(end,3)*1];
             end
             SS = U(:,1)+U(:,2);
             y5 = [y5 U(1,1)./SS(1)*100 U(end,1)./SS(end)*100];
@@ -157,7 +168,7 @@ for g = 1:length(cell_lines)
     %clearvars -except sc_start tc_start p color tUV_all tUVb_all treat_all sim_resume_all TCP_all TCPb_all par DT Doses Frac treat_start ROI_radius total_cell_num total_start_frac total_start_cell_num rho acq_days_after_RT cell_lines data_new par_ab parameters F a b a1 a2 b1 b2 g k TCPb_frac TCP_frac BED BEDb TCP_thre folder
 end
 
-% containers combining all similar vectors
+% containers combining all similar vectors for plotting
 u_sc  = [Ua(:,1)'*total_cell_num y1(2:end-2) U(:,1)'*total_cell_num];
 u_dc  = [Ua(:,2)'*total_cell_num y2(2:end-2) U(:,2)'*total_cell_num];
 u_srv = [zeros(size(Ua(:,1)')) ys(2:end-2) U(:,3)'];
@@ -312,18 +323,18 @@ trapz(test_x,test_y)
 
 low_lim_log_s = floor(log10(min(test_y(test_y ~= 0))));
 high_lim_log_s = ceil(log10(max(test_y(test_y ~= 0))));
-yticks = unique(10.^floor(log10(logspace(low_lim_log_s,high_lim_log_s,8))));
-fg_srv_inset = fg_srv;
-[fg_srv fg_srv_inset] = inset(fg_srv, fg_srv_inset);
-set(fg_srv_inset,'yscale','log','ytick',yticks,'ylim',[10^low_lim_log_s 10^high_lim_log_s],'xlim',[treat_start acq_end])
-title(fg_srv_inset,'')
-low_lim_log_mu = floor(log10(min(chi * test_y(test_y ~= 0)./(1+chi*test_y(test_y ~= 0)))));
-high_lim_log_mu = ceil(log10(max(chi * test_y(test_y ~= 0)./(1+chi*test_y(test_y ~= 0)))));
-yticks = unique(10.^floor(log10(logspace(low_lim_log_mu,high_lim_log_mu,8))));
-fg_mu_inset = fg_mu;
-[fg_mu fg_mu_inset] = inset(fg_mu, fg_mu_inset);
-set(fg_mu_inset,'yscale','log','ytick',yticks,'ylim',[10^low_lim_log_mu 10^high_lim_log_mu],'xlim',[treat_start acq_end])
-title(fg_mu_inset,'')
+% yticks = unique(10.^floor(log10(logspace(low_lim_log_s,high_lim_log_s,8))));
+% fg_srv_inset = fg_srv;
+% [fg_srv fg_srv_inset] = inset(fg_srv, fg_srv_inset);
+% set(fg_srv_inset,'yscale','log','ytick',yticks,'ylim',[10^low_lim_log_s 10^high_lim_log_s],'xlim',[treat_start acq_end])
+% title(fg_srv_inset,'')
+% low_lim_log_mu = floor(log10(min(chi * test_y(test_y ~= 0)./(1+chi*test_y(test_y ~= 0)))));
+% high_lim_log_mu = ceil(log10(max(chi * test_y(test_y ~= 0)./(1+chi*test_y(test_y ~= 0)))));
+% yticks = unique(10.^floor(log10(logspace(low_lim_log_mu,high_lim_log_mu,8))));
+% fg_mu_inset = fg_mu;
+% [fg_mu fg_mu_inset] = inset(fg_mu, fg_mu_inset);
+% set(fg_mu_inset,'yscale','log','ytick',yticks,'ylim',[10^low_lim_log_mu 10^high_lim_log_mu],'xlim',[treat_start acq_end])
+% title(fg_mu_inset,'')
 %% final plot embroidery and saving
 fg_pops_inset = fg_pops;
 [fg_pops fg_pops_inset]=inset(fg_pops,fg_pops_inset);
@@ -336,12 +347,26 @@ set(gca,'yscale','log')
 legend(fg_pops,'Location','northwest')
 
 %cab 3 4 5 2 6 7 100 102 103 104 105 106
-fg_drvtv = figure(); plot(T(1:end-1),diff(U(:,1))*total_cell_num./diff(T),'ro:','LineWidth',2);
+fg_drvtv = figure(); plot(T(1:end-1),diff(U(:,1))./(U(1,1)*diff(T)),'ro:','LineWidth',2); 
 xlim([treat_start acq_end]);
 ylim([0 inf])
 ylabel({['Stem Cell Derivative'] ['(Forward Finite Difference)']}); xlabel('Days'); 
 title({['rate of change after treatment for'], ['mu\_bar = ' num2str(mu_bar) '; chi = ' num2str(chi)]});
 
+t1 = (2*p./(1+l*u_dc/total_cell_num)-1).*r1./(1+h*u_dc/total_cell_num).*u_sc/total_cell_num;
+t2 = mu_bar * chi .* u_srv ./ ( 1 + chi .* u_srv ) .* u_dc/total_cell_num;
+
+fg_csc_rates = figure(); hold on;
+plot(t_vec, t2*total_cell_num, 'b-','DisplayName','Dynamical De-Differentiation','LineWidth', 0.5)
+plot(t_vec,t1*total_cell_num,'g-','DisplayName','Self-Renewal','LineWidth', 0.5)
+lgdX = legend('Location','north');
+title(lgdX,'')
+set(gca, 'YScale', 'log')
+ylim([1e-2 1e5])
+ylabel('Rate of CSC Growth')
+xlabel('Time')
+title(['chi: ' num2str(chi) '; \gamma_\alpha_1: ' num2str(cont_p_a)])
+hold off;
 %close 1 3 6
 if weak_feedback_Q
     fdbk_type = 'Weak';
@@ -350,7 +375,7 @@ else
 end
 % figure(); plot(T, 1 ./ (1+cont_p_a*U(:,3)))
 % figure(); plot(T, 1 ./ (1+compt_mult*cont_p_b*U(:,3)))
-prefix = ['C:\Users\jhvo9\Google Drive (vojh1@uci.edu)\a PhD Projects\GBM Modeling\Survivin Models\Model 2 - Dedifferentiation Term\figs_diagnose_sigma\'];
+prefix = ['C:\Users\jhvo9\Google Drive (vojh1@uci.edu)\a PhD Projects\GBM Modeling\Survivin Models\Model 2 - Dedifferentiation Term\figs_diagnose_dediff\'];
 % paramFile = [prefix 'params.txt'];
 % if ~isfile(paramFile)
 %     fileID = fopen(paramFile,'wt');
@@ -363,7 +388,7 @@ prefix = ['C:\Users\jhvo9\Google Drive (vojh1@uci.edu)\a PhD Projects\GBM Modeli
 %     fclose(fileID)
 % end
 filename_prefix = [num2str(pwr),'_',num2str(Doses(1)),'_',num2str(Frac(1)),...
-    '_',num2str(sig),'_',num2str(compt_mult),'_',num2str(srvn_csc),'_',num2str(srvn_dcc)];
+    '_',num2str(sig),'_',num2str(cont_p_a),'_',num2str(cont_p_b),'_',num2str(compt_mult),'_',num2str(srvn_csc),'_',num2str(srvn_dcc)];
 if saveQ
     savefig(fg_total,[prefix 'total\' filename_prefix '_total' suffix '.fig'])
     saveas(fg_total,[prefix 'total\' filename_prefix '_total' suffix '.png'])
@@ -398,4 +423,7 @@ if saveQ
     
     savefig(fg_drvtv,[prefix 'drvtv\' filename_prefix '_drvtv' suffix '.fig'])
     saveas(fg_drvtv,[prefix 'drvtv\' filename_prefix '_drvtv' suffix '.png'])
+    
+    savefig(fg_csc_rates,[prefix 'csc_rates\' filename_prefix '_csc_rates' suffix '.fig'])
+    saveas(fg_csc_rates,[prefix 'csc_rates\' filename_prefix '_csc_rates' suffix '.png'])
 end

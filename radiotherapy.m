@@ -15,9 +15,10 @@ u_new = u*SF_U + min(1,c*D)*v*exp(-a2*fdbk(cont_p_a, s)*D-b2*fdbk(cont_p_b, s)*D
             % u*exp(-a1*D-b1*D^2) + min(1,c*D)*v*exp(-a2*D-b2*D^2);
             % min(1,c*D) is one is better due to consistency
             % established between u_new and v_new
-v_new = (v - min(1,c*D)*v)*SF_V; % apply RT; assumes death occurs on reprogrammed cells. is this biologically valid?
+v_new = (v - min(1,c*D)*v)*SF_V; % apply RT; assumes death occurs on non-reprogrammed cells. is this biologically valid?
 % max(v*exp(-a2*D-b2*D^2) - c*v*D,0)
-s_new = s + srvn_csc * (u-u*SF_U) + srvn_dcc * (v-v_new);
+s_new = s + srvn_csc * (u-u*SF_U) + srvn_dcc * (v-v_new); 
+% v_new is used instead of SF_U because radiotherapy causes de-dif
 end
 
 function val = fdbk(control, surv)
