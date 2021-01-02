@@ -10,8 +10,8 @@ len_sig = length(sig_vec);
 
 %%%%%              SWITCHBOARD START              %%%%%
 relPlotQ = false; % true means normalize by conventional; false means just plot the value
-absTimeQ = true; % true means plot everything according to an absolute time; false means plot N days after end of radiotherapy
-saveQ = true; % true means plots are saved; false means plots are not saved
+absTimeQ = false; % true means plot everything according to an absolute time; false means plot N days after end of radiotherapy
+saveQ = false; % true means plots are saved; false means plots are not saved
 logQ = true; % [DEPRECATED; holdover from time-series plot.]
 weak_feedback_Q = true; % true means use a very low feedback gain on self-renewal probability; false means use a very high feedback gain on same constant
 srvQ = true; % true means that survivin is at play for any sim; false means that survivin is barred from any sim
@@ -68,7 +68,7 @@ rho = 10^9; % density of cells in the region of interest (cells/cm^3)
 total_cell_num = 4/3*pi()*ROI_radius^3*rho;
 total_start_cell_num = total_cell_num*total_start_frac;
 
-zeta_mult1 = 1;
+zeta_mult1 = 10;
 zeta_mult2 = 1;
 if srvQ
     %srvn_csc = 3.6; srvn_dcc = 0.05;
@@ -255,15 +255,13 @@ if weak_feedback_Q
 else
     fdbk_type = 'Strong';
 end
-s_ylabel = 'total cell number';%'dediff * V';%/dediff (conventional)';
-if relPlotQ
-    s_ylabel = [s_ylabel  '/' s_ylabel '(conventional)'];
-end
+s_ylabel = 'CSC';%'dediff * V';%/dediff (conventional)';
+
 s_xlabel = 'Dose (Gy)';
 s_legend_title = 'Survivin Decay Rate:';
 save_prefix = ['C:\Users\jhvo9\Google Drive (vojh1@uci.edu)\a PhD Projects\GBM Modeling\Survivin Models\Model 2 - Dedifferentiation Term\optimality_studies\' num2str(srvn_zeta(1)) '_' num2str(srvn_zeta(2)) '\'];%'C:\Users\jhvo9\Documents\vojh MCSB Repo\Projects\Yu\Varying Fractionation\Better Visuals\',lower(fdbk_type), '_relCSC_time_'];
 xlim_vec = [min(Doses) max(Doses)];
-ylim_vec = [0 5e-3];%[-Inf Inf];
+ylim_vec = [-Inf Inf];%[-Inf Inf];
 leg_pos = 'north';
 line_types = cell(1,len_surv_cont);
 for k=2:len_surv_cont
@@ -280,7 +278,10 @@ if absTimeQ
 else
     post_suffix = '_rel_';
 end
-suffix = [pre_suffix 'total' post_suffix 'time'];%'_abs_total_abs_time'; % i.e. '_testN'
+suffix = [pre_suffix s_ylabel post_suffix 'time'];%'_abs_total_abs_time'; % i.e. '_testN'
+if relPlotQ
+    s_ylabel = [s_ylabel  '/' s_ylabel '(conventional)'];
+end
 per_ratio = zeros(len_D,len_C,len_samples,len_surv_cont);
 fig_start = 102;
 for gg=1:len_zeta
@@ -299,11 +300,27 @@ for gg=1:len_zeta
                     % when relQ = true, we normalize by the conventional
                     % treatment-associated value.
                     % when relQ = false, we simply do nothing more to it.
-                    ordinate = (dose_reprog_time_cont(1,:,k,t,gg,ss,ii) + dose_reprog_time_cont(2,:,k,t,gg,ss,ii));
-                    if relPlotQ
-                        ordinate = ordinate/ordinate(2);
+                    ordinate = zeros(length(Doses),3);
+                    for d=1:len_D
+                        ordinate(d,:) = (dose_reprog_time_cont(1,d,k,t,gg,ss,ii));
+                        % worth measuring:
+                        % csc: (dose_reprog_time_cont(1,d,k,t,gg,ss,ii)
+                        % log(SF): -a1./(1 + cont_p(ii,1)*compt_mult* dose_reprog_time_cont(3,d,k,t,gg,ss,ii))*Doses(d)-b1./(1 + cont_p(ii,2)*compt_mult* dose_reprog_time_cont(3,d,k,t,gg,ss,ii))*Doses(d)^2;
+                        % CSC renewal: (2*p./(1+l*(dose_reprog_time_cont(2,d,k,t,gg,ss,ii))^n)-1)*r1./(1+h*(dose_reprog_time_cont(2,d,k,t,gg,ss,ii))^z)*(dose_reprog_time_cont(1,d,k,t,gg,ss,ii));
+                        % derivative: stem_ODE_feedback(0, dose_reprog_time_cont(:,d,k,t,gg,ss,ii), r1, r2, d, p, h, z, l, n, sig, mu_bar, chi)';
+                        % total: (dose_reprog_time_cont(1,d,k,t,gg,ss,ii) + dose_reprog_time_cont(2,d,k,t,gg,ss,ii));
+                        % csc-to-dcc: dose_reprog_time_cont(1,d,k,t,gg,ss,ii)./dose_reprog_time_cont(2,d,k,t,gg,ss,ii);
+       
+                        % not worth measuring:
+                        
+                        % r1./(1+h.*(dose_reprog_time_cont(2,d,k,t,gg,ss,ii)).^n);
+                        %mu_bar * chi * dose_reprog_time_cont(3,d,k,t,gg,ss,ii)./(1 + chi * dose_reprog_time_cont(3,d,k,t,gg,ss,ii));
                     end
-                    ptemp = plot(Doses, ordinate,'o',... % dose_reprog_time_cont(:,k,t,gg,ss,ii)  * total_cell_num
+                    
+                    if relPlotQ
+                        ordinate = ordinate./ordinate(2,:);
+                    end
+                    ptemp = plot(Doses, ordinate(:,2),'o',... % dose_reprog_time_cont(:,k,t,gg,ss,ii)  * total_cell_num
                             'color', color{ss},'LineStyle',line_types{ii},'LineWidth',line_lengths(2),...
                             'DisplayName',disp_str,'MarkerSize',3*ss);
                     % 
@@ -337,83 +354,4 @@ for gg=1:len_zeta
 end
 
 per_ratio(per_ratio == 0) = nan;
-                    
-% figure();hold on;
-% for ss=1:len_sig
-% plot(dose_reprog_time_cont(11:end,:,:,:,ss), mu_bar * chi * dose_reprog_time_cont(11:end,:,:,:,ss)./(1 + chi * dose_reprog_time_cont(11:end,:,:,:,ss)),'o',...
-% 'color', color{ss},'LineWidth',line_lengths(2),'MarkerSize',3*ss )
-% end
-% hold off
-% dose_reprog_time_cont = zeros(len_D,len_C,len_samples,len_zeta,len_sig,len_surv_cont);
-% fig_start2 = 60;
-% control_ratio = cont_p(ii,2)/cont_p(ii,1);
-% for t=1:len_samples
-%     figX = figure(fig_start2*k+t-1);
-%     hold on;
-%     for k=1:len_C
-%         for ii=1:len_surv_cont
-%             scatter(sort(repmat(control_ratio(ii),1,length(Doses))),Doses,...
-%                 100*per_ratio(:, k,t,ii),color{k})
-%             title(['time: ~' num2str(mean(times(:,t))) ]);
-%             xlabel('survivin control ratio');
-%             ylabel('Doses')
-%         end
-%     end
-%     hold off;
-% end
-% fig2 = figure(30);
-% hold on;
-% for k=1:len_C
-%     plot(Doses,dose_reprog_time(:,k,1)/dose_reprog_time(2,k,1),'o',...
-%         'color', color{k},'LineStyle',line_types{k},'LineWidth',line_lengths(2));
-% end
-% lgd2 = legend(strC,'Location',leg_pos);
-% title(lgd2,s_legend_title)
-% title([title_prefix,num2str(round(mean(times(:,1)),ceil(log10(mean(times(:,1)))),'significant')),' days'])
-% ylabel(s_ylabel)
-% xlabel(s_xlabel)
-% xlim(xlim_vec)
-% ylim(ylim_vec)
-% hold off;
-% if saveQ
-%     savefig([save_prefix '1_' suffix '.fig'])
-%     saveas(gcf,[save_prefix '1_' suffix '.png'])
-% end
-
-% % The figures below produce the same stuff for weak feedback
-% fig3 = figure(31);
-% hold on;
-% for k=1:len_C
-%     plot(Doses,dose_reprog_time(:,k,2)/dose_reprog_time(2,k,2),'o',...
-%         'color', color{k},'LineStyle',line_types{k},'LineWidth',line_lengths(2));
-% end
-% lgd3 = legend(strC,'Location',leg_pos);
-% title(lgd3,s_legend_title)
-% title([title_prefix,num2str(round(mean(times(:,2)),ceil(log10(mean(times(:,2)))),'significant')),' days'])
-% ylabel(s_ylabel)
-% xlabel(s_xlabel)
-% xlim(xlim_vec)
-% ylim(ylim_vec)
-% hold off;
-% if saveQ
-%     savefig([save_prefix '2_' suffix '.fig'])
-%     saveas(gcf,[save_prefix '2_' suffix '.png'])
-% end
-% fig4 = figure(32);
-% hold on;
-% for k=1:len_C
-%     plot(Doses,dose_reprog_time(:,k,3)/dose_reprog_time(2,k,3),'o',...
-%         'color', color{k},'LineStyle',line_types{k},'LineWidth',line_lengths(2));
-% end
-% lgd4 = legend(strC,'Location',leg_pos);
-% title(lgd4,s_legend_title)
-% title([title_prefix,num2str(round(mean(times(:,3)),ceil(log10(mean(times(:,3)))),'significant')),' days'])
-% ylabel(s_ylabel)
-% xlabel(s_xlabel)
-% xlim(xlim_vec)
-% ylim(ylim_vec)
-% hold off;
-% if saveQ
-%     savefig([save_prefix '3_' suffix '.fig'])
-%     saveas(gcf,[save_prefix '3_' suffix '.png'])
-% end
+                   
